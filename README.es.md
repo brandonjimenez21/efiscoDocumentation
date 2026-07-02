@@ -35,7 +35,7 @@ Efisco no es un ERP genérico adaptado al sector automotriz — fue construido d
 - **Control de egresos con OCR** — extracción automática de datos de facturas de proveedores vía AWS Textract
 - **Facturación electrónica** integrada con Dataico/DIAN (no bloqueante, guarda CUFE en base de datos)
 - **Comunicación automatizada** con clientes vía WhatsApp Cloud API (Meta)
-- **Multi-tenant** con aislamiento de datos por taller (RLS en Supabase)
+- **Multi-tenant** con aislamiento de datos por taller verificado a nivel de aplicación — cada endpoint valida `workshop_id` contra la sesión del usuario autenticado (RLS de Supabase solo está activo en un par de tablas puntuales, no es la capa principal de aislamiento)
 - **Ventas a crédito** con plan de cuotas: INC_GROSS se registra en $0 al liquidar y el ingreso real entra vía pagos de cuotas
 - **Panel de equilibrio interactivo** con gráfica SVG hover, proyección what-if con cálculo fiel de margen
 - **IVA por categoría de repuesto** — tasas configurables por las 10 categorías de inventario
@@ -46,7 +46,7 @@ Efisco no es un ERP genérico adaptado al sector automotriz — fue construido d
 
 ## Arquitectura
 
-El sistema utiliza una arquitectura **multi-tenant** con aislamiento de datos a nivel de fila (RLS) y un núcleo de cálculo financiero inmutable.
+El sistema utiliza una arquitectura **multi-tenant** con aislamiento de datos verificado en cada endpoint del backend (`workshop_id` de la sesión) y un núcleo de cálculo financiero inmutable.
 
 ### 1. Mapa de Componentes y Capas
 
@@ -62,7 +62,7 @@ graph LR
 
     User((Taller)) --> FE[Frontend React 19]
     Admin((EFISCO Admin)) --> AdminFE["/admin Panel"]
-    FE --> Auth[Middleware: JWT/RLS + Suspensión]
+    FE --> Auth[Middleware: JWT + workshop_id + Suspensión]
     AdminFE --> AdminAuth[requireAdmin: JWT Separado]
 
     subgraph Core [Backend Core - Express 5]
@@ -153,65 +153,6 @@ sequenceDiagram
 
 ---
 
-## Lógica de Inventario y Kardex Inmutable
- 
-Trazabilidad total: cada movimiento físico genera un reflejo contable obligatorio en la base de datos.
- 
-```mermaid
-graph LR
-    subgraph "Entrada (Abastecimiento)"
-        Purchase[Compra a Proveedor] --> OCR_P[OCR: Extraer Factura]
-        OCR_P --> Inv_Up[Update: current_stock]
-    end
- 
-    subgraph "Persistencia (Base de Datos)"
-        Inv_Up --> Master[(Inventario Maestro)]
-        Inv_Up --> Kardex[[Historial Kardex Inmutable]]
-        Master --> Alerts{Stock < Min?}
-    end
- 
-    subgraph "Salida (Operación)"
-        WO[Work Order] --> Add_Item[Añadir Repuesto]
-        Add_Item --> Pricing[PricingEngine: IA Margin]
-        Pricing --> Inv_Down[Update: current_stock]
-        Inv_Down --> Kardex
-    end
- 
-    Alerts --> Dashboard[Notificación Low Stock]
-```
- 
----
- 
-## Motor Financiero (FinancialEngine.js)
- 
-### Matriz de Decisión de Liquidación
- 
-```mermaid
-flowchart TD
-    Start([Inicio Liquidación]) --> Data[Cargar: Labor + Parts + Config]
-    Data --> Tier{Tier del Servicio?}
- 
-    Tier -- Premium --> PM[Aplicar Margen Premium: ~10%]
-    Tier -- Básico --> BM[Aplicar Margen Básico: ~5%]
- 
-    PM & BM --> Base[Base Impositiva]
-    Base --> IVA[Cálculo IVA: 19% si aplica]
-    IVA --> Total[Total Factura]
- 
-    Total --> Gateway{Usa Pasarela?}
-    Gateway -- Bold/Addi --> Comm[Calcular Comisión + IVA]
-    Gateway -- Efectivo --> NoComm[Cero Comisión]
- 
-    Comm & NoComm --> Rets{Agente Retenedor?}
-    Rets -- Sí --> CalcRets[ReteIVA 15% / ReteFuente / ReteICA]
-    Rets -- No --> ZeroRets[Sin Retenciones]
- 
-    CalcRets & ZeroRets --> DB[(Persistencia Ledger Atómico)]
-    DB --> Result[Net Cash Inflow + Real Bank Balance]
-```
- 
----
-
 ## Stack Tecnológico
 
 | Capa | Tecnología | Rol |
@@ -220,7 +161,7 @@ flowchart TD
 | Estilos | Tailwind CSS v4 | Design system utilitario |
 | Estado | Zustand | `useFinancialStore`, `useBillingStore`, `useThemeStore`, `useAdminStore` |
 | Backend | Express 5 + Node.js ESM | API REST con async/await nativo |
-| Base de datos | Supabase (PostgreSQL) | Persistencia + RLS multi-tenant |
+| Base de datos | Supabase (PostgreSQL) | Persistencia + aislamiento multi-tenant a nivel de aplicación |
 | OCR | AWS Textract | Extracción de facturas de proveedores |
 | Comunicaciones | Meta WhatsApp Cloud API | Notificaciones automáticas |
 | Facturación | Dataico | Emisión DIAN electrónica (no bloqueante) |
@@ -232,7 +173,7 @@ flowchart TD
 
 ## Decisiones Técnicas Clave
 
-- **Multi-tenant con RLS** — Aislamiento por Row Level Security en PostgreSQL sin bases de datos independientes.
+- **Multi-tenant a nivel de aplicación** — cada controlador valida `workshop_id`/rol del usuario autenticado en cada operación, sin bases de datos independientes por taller (RLS de Postgres solo cubre un par de tablas puntuales, no es la defensa principal).
 - **Ledger Inmutable** — Cada movimiento financiero es append-only. Trazabilidad contable completa y auditable.
 - **Pipeline OCR asíncrono** — Procesamiento de facturas en segundo plano vía AWS Textract.
 - **Tarificación dinámica por tier** — Clasificador de vehículos asigna el tier automáticamente.
@@ -261,7 +202,7 @@ flowchart TD
 | `/equilibrio` | Panel de Equilibrio | Owner |
 | `/cobros` | Panel de Cobros | Owner |
 | `/flujo-caja` | Flujo de Caja | Owner |
-| `/cliente/registro/:id` | Registro público del cliente | Público |
+| `/cliente/registro/:workshopId/:intakeId` | Registro Seguro EFISCO (link de WhatsApp) | Público |
 | `/admin` | Panel Admin EFISCO | Admin interno |
 | `/admin/talleres` | Gestión de talleres | Admin interno |
 | `/admin/pagos` | Liquidación de comisiones | Admin interno |
@@ -270,12 +211,21 @@ flowchart TD
 ---
 
 ### Recepción
-Punto de ingreso de vehículos. Registra cliente, vehículo y síntomas reportados.
+Punto de ingreso rápido de vehículos. Registra cédula, nombre, teléfono y síntoma reportado — la cédula se pide aquí mismo para poder activar el score crediticio de inmediato (antes requería que el cliente completara el Registro Seguro EFISCO primero).
 
-- **Clasificación de cliente**: Persona Natural | Empresa con sub-régimen (Simple / Ordinario / Gran Contribuyente)
-- El tipo de cliente impacta directamente el cálculo de retenciones en la liquidación
-- Notificación automática al cliente vía WhatsApp al crear la orden
-- Score de riesgo crediticio visible antes de liquidar (`/api/clients/:cedula/risk-score`)
+- Botón de WhatsApp por cada ingreso en cola: envía el link de **Registro Seguro EFISCO** (`/cliente/registro/:workshopId/:intakeId`), vinculado tanto al taller como al ingreso específico
+- Verificación de score por OTP: se envía un código de 6 dígitos al WhatsApp del cliente; solo con el código correcto se muestra el score local y de red al recepcionista
+- Score de riesgo crediticio con desglose de 3 pilares (pago 60% / estabilidad 10% / fidelidad 30%), descarga de reporte en PDF
+
+---
+
+### Registro Seguro EFISCO (`/cliente/registro/:workshopId/:intakeId`)
+Formulario público que el cliente llena desde su propio WhatsApp tras recibir el link tras registrar el ingreso en Recepción. La identidad (cédula, nombre, celular) se trae automáticamente del ingreso vinculado — el cliente no la vuelve a digitar.
+
+- Muestra su propio score EFISCO (local y global) de forma transparente, o un mensaje de "aún no tienes historial" si es cliente nuevo
+- **Clasificación fiscal**: Persona Natural | Empresa con sub-régimen (Simple / Ordinario / Gran Contribuyente) — se captura aquí, no en Recepción, y queda persistida en la orden de trabajo que se crea al enviar el formulario
+- Pide correo y dirección de residencia, datos del vehículo, y consentimiento de tratamiento de datos (Ley 1581 de 2012) antes de enviar
+- El link solo funciona si viene vinculado a un ingreso de Recepción existente
 
 ---
 
@@ -297,9 +247,37 @@ Gestión del trabajo en taller: asignación de técnicos, registro de mano de ob
 Control de existencias con trazabilidad completa.
 
 - **Kardex inmutable**: cada movimiento genera una transacción en `inventory_transactions`
+- **Descuento de stock 100% en código de aplicación** (`inventory.controller.js:addItemToWorkOrder`), respetando si el ítem es de stock actual o nueva facturación — requiere haber corrido la migración 5 (arriba), que elimina el trigger de base de datos que antes duplicaba el descuento
 - **IVA por categoría**: al seleccionar la categoría del repuesto, el porcentaje de IVA se aplica automáticamente desde `workshop_config.category_vat_rates`
 - **Alerta de stock mínimo por ítem** (`min_stock_vital`): badge en dashboard y color de fila en tabla
 - `getItemHistory` ordena por `requested_at`
+
+**Lógica de Inventario y Kardex Inmutable**
+
+Trazabilidad total: cada movimiento físico genera un reflejo contable obligatorio en la base de datos.
+
+```mermaid
+graph LR
+    subgraph "Entrada (Abastecimiento)"
+        Purchase[Compra a Proveedor] --> OCR_P[OCR: Extraer Factura]
+        OCR_P --> Inv_Up[Update: current_stock]
+    end
+
+    subgraph "Persistencia (Base de Datos)"
+        Inv_Up --> Master[(Inventario Maestro)]
+        Inv_Up --> Kardex[[Historial Kardex Inmutable]]
+        Master --> Alerts{Stock < Min?}
+    end
+
+    subgraph "Salida (Operación)"
+        WO[Work Order] --> Add_Item[Añadir Repuesto]
+        Add_Item --> Pricing[PricingEngine: IA Margin]
+        Pricing --> Inv_Down[Update: current_stock]
+        Inv_Down --> Kardex
+    end
+
+    Alerts --> Dashboard[Notificación Low Stock]
+```
 
 ---
 
@@ -377,13 +355,23 @@ Panel de administración fiscal y operativa. Cinco pestañas:
 
 **1. Datos del Taller** — Nombre, dirección, horarios, costos fijos (arriendo + servicios)
 
-**2. Mi Equipo & Roles** — Alta de empleados, esquemas de compensación (fijo / comisión / híbrido)
+**2. Mi Equipo & Roles** — Alta de empleados, esquemas de compensación (fijo / comisión / híbrido). Crear, editar, desactivar empleados y habilitar sus credenciales de acceso está restringido al rol `owner`
 
 **3. Catálogo de Servicios** — CRUD con márgenes básico/premium por tipo de vehículo
 
-**4. Pasarelas y Finanzas**
+**4. Pasarelas**
 
-*Régimen Fiscal* (4 opciones):
+Editable directamente por el dueño (no requiere al contador):
+
+*Tasas de pasarelas*: Bold físico (2.99%), Bold online (3.49%), Addi (10.5%)
+
+*Anticipo de Folios*: calculadora de recarga de folios Dataico (cantidad × costo unitario + margen + comisión de pasarela), con registro automático del egreso en el flujo de caja
+
+**5. Módulo del Contador**
+
+*Parámetros Fiscales y de Recaudo* — visible aquí en modo solo lectura para el dueño (la edición real vive en el panel del contador, `/contador`):
+
+Régimen Fiscal (4 opciones):
 | Opción | IVA | Reg. Simple | Agente Retenedor |
 |:---|:---:|:---:|:---:|
 | No Responsable de IVA | ✗ | ✗ | ✗ |
@@ -391,13 +379,9 @@ Panel de administración fiscal y operativa. Cinco pestañas:
 | Régimen Ordinario | ✓ | ✗ | ✓ |
 | Gran Contribuyente | ✓ | ✗ | ✓ |
 
-*Tasas configurables*: IVA (19%), ReteICA (‰), ReteFuente declarantes/no declarantes, ReteIVA (15%)
+Tasas: IVA (19%), ReteICA (‰), ReteFuente declarantes/no declarantes, ReteIVA (15%)
 
-*Pasarelas*: Bold físico (2.99%), Bold online (3.49%), Addi (10.5%), GMF 4×1000
-
-**5. Módulo del Contador**
-
-*Identidad Legal*: NIT, Razón Social, Prefijo, Clave técnica DIAN
+*Identidad Legal*: NIT, Razón Social, Prefijo, Clave técnica DIAN — edición restringida a roles `owner`/`contador`
 
 *Presets PUC* — 3 botones que auto-rellenan los 21 códigos según régimen:
 - **Régimen Ordinario** (estándar DIAN)
@@ -472,6 +456,32 @@ Panel interno en `/admin` con autenticación completamente separada de los talle
 ## Motor Financiero
 
 `backend/utils/financialEngine.js` — núcleo de cálculo inmutable. Constantes 2026: UVT = $50.318, umbral retenciones = 27 UVT ≈ $1.358.586.
+
+### Matriz de Decisión de Liquidación
+
+```mermaid
+flowchart TD
+    Start([Inicio Liquidación]) --> Data[Cargar: Labor + Parts + Config]
+    Data --> Tier{Tier del Servicio?}
+
+    Tier -- Premium --> PM[Aplicar Margen Premium: ~10%]
+    Tier -- Básico --> BM[Aplicar Margen Básico: ~5%]
+
+    PM & BM --> Base[Base Impositiva]
+    Base --> IVA[Cálculo IVA: 19% si aplica]
+    IVA --> Total[Total Factura]
+
+    Total --> Gateway{Usa Pasarela?}
+    Gateway -- Bold/Addi --> Comm[Calcular Comisión + IVA]
+    Gateway -- Efectivo --> NoComm[Cero Comisión]
+
+    Comm & NoComm --> Rets{Agente Retenedor?}
+    Rets -- Sí --> CalcRets[ReteIVA 15% / ReteFuente / ReteICA]
+    Rets -- No --> ZeroRets[Sin Retenciones]
+
+    CalcRets & ZeroRets --> DB[(Persistencia Ledger Atómico)]
+    DB --> Result[Net Cash Inflow + Real Bank Balance]
+```
 
 ### 1. Liquidación de servicios (`liquidateClientInvoice`)
 
@@ -589,7 +599,19 @@ WHATSAPP_PHONE_NUMBER_ID=<phone-id>
 # Dataico (Facturación DIAN)
 DATAICO_AUTH_TOKEN=<auth-token>
 DATAICO_BASE_URL=https://app.dataico.com/api/2
+
+# Webhooks Bold/Addi (opcional pero recomendado)
+# Si no se configuran, los webhooks aceptan cualquier notificación sin
+# verificar origen — ver nota de seguridad más abajo.
+BOLD_WEBHOOK_TOKEN=<token-compartido-con-bold>
+ADDI_WEBHOOK_TOKEN=<token-compartido-con-addi>
 ```
+
+> **Nota de seguridad — webhooks de pago:** `boldWebhook`/`addiWebhook`
+> (`backend/controllers/billing.controller.js`) marcan una orden como pagada
+> al recibir la notificación. Sin `BOLD_WEBHOOK_TOKEN`/`ADDI_WEBHOOK_TOKEN`
+> configurados, no verifican que la notificación venga realmente de Bold/Addi
+> — configúralos antes de manejar pagos reales en producción.
 
 ---
 
