@@ -117,7 +117,7 @@ sequenceDiagram
 |:---|:---|:---|
 | UI | React 19 + Vite | SPA con routing client-side |
 | Estilos | Tailwind CSS v4 | Design system utilitario |
-| Estado | Zustand | `useFinancialStore`, `useBillingStore`, `useThemeStore`, `useAdminStore` |
+| Estado | Zustand | `useFinancialStore`, `useBillingStore`, `useThemeStore`, `useAdminStore`, `useInstallStore` |
 | Backend | Express 5 + Node.js ESM | API REST con async/await nativo |
 | Base de datos | Supabase (PostgreSQL) | Persistencia + aislamiento multi-tenant a nivel de aplicación |
 | OCR | AWS Textract | Extracción de facturas de proveedores |
@@ -127,7 +127,7 @@ sequenceDiagram
 | Pasarelas | Bold (físico/online/QR) + Addi (crédito) | Procesamiento de pagos |
 | Crypto | Node.js `crypto.scrypt` | Hash de contraseñas admin (sin bcrypt) |
 | Admin JWT | `jsonwebtoken` con `ADMIN_JWT_SECRET` | Token separado del JWT de talleres |
-| PWA | `manifest.json` + íconos maskable/any | Instalable como app desde el celular, con ícono correcto (margen de seguridad para el recorte automático del sistema — círculo/cuadrado redondeado según el launcher) |
+| PWA | `manifest.json` + `public/sw.js` + íconos maskable/any | Instalable como app desde el celular, con ícono correcto (margen de seguridad para el recorte automático del sistema). `sw.js` es un service worker mínimo sin caché — su único propósito es cumplir el requisito de instalabilidad de Chrome/Edge/Android para que el navegador dispare `beforeinstallprompt` (botón "Instalar" real en Landing/Auth, capturado en `useInstallStore`). `start_url: "/login"` (con `scope: "/"` explícito) — abrir el ícono instalado sin sesión activa lleva directo al login, no a la Landing de presentación |
 
 ---
 
@@ -139,6 +139,7 @@ sequenceDiagram
 - **Margen what-if fiel** — El cálculo de proyección del [Panel de Equilibrio](BUSINESS_RULES.md#panel-de-equilibrio-equilibrio) usa costo variable absoluto por orden (`varCostPerOrder`), no margen porcentual fijo. Al subir precios, el margen % mejora automáticamente porque los costos de partes no suben.
 - **Gotcha real de `html2canvas`/`html2pdf.js` (PDF en blanco)** — posicionar el contenedor a capturar con coordenadas muy negativas (`position:fixed;top:-9999px`) es una causa documentada de canvas vacío en algunos navegadores. El patrón correcto en este proyecto (`generateScorePDF.js`): `position:absolute` dentro del flujo normal del documento + `opacity:0;pointer-events:none`, más un frame de espera (`requestAnimationFrame` doble) antes de capturar, para darle tiempo al navegador de terminar el layout/paint del contenido recién inyectado.
 - **Mobile-first auditado, no solo "responsive por Tailwind"** — tener clases `md:`/`sm:` no garantiza que algo se vea bien en un celular real; varios contenedores con `flex ... items-center` (sin `w-full`) se centraban en vez de estirarse en mobile, causando overflow simétrico en ambos lados (ej. filtros de Bahía, footer). El patrón correcto en este proyecto: contenedores con `w-full sm:w-auto` + filas de tabs/filtros con `overflow-x-auto` explícito (nunca asumir que el contenido cabe). Modales largos siempre con `max-h-[90vh] flex flex-col` + región central `overflow-y-auto flex-1` (header/footer fijos) — sin esto, contenido más alto que la pantalla queda inaccesible en el celular, sin forma de hacer scroll.
+- **Un evento del navegador que solo se dispara una vez debe vivir en un store global, no en un hook local de página** — `beforeinstallprompt` (botón "Instalar" de Landing/Auth) se capturó primero en un hook dentro de cada página; el navegador lo dispara una única vez, así que al navegar de `/` a `/login` (React Router desmonta una página y monta la otra) el hook nuevo arrancaba en `null` y el evento ya capturado se perdía — el botón "desaparecía" al cambiar de pantalla. Corregido moviendo la captura a `useInstallStore` (Zustand), inicializado una sola vez en `App.jsx`: cualquier evento de navegador que sea "úsalo o piérdelo" (single-fire) necesita vivir por encima del ciclo de vida de las páginas que lo consumen.
 
 > Las decisiones de aislamiento multi-tenant, autenticación y control de acceso (admin separado, suspensión, contrato B2B, autorización del taller) están documentadas en **[SECURITY.md](SECURITY.md#decisiones-técnicas-de-seguridad)**.
 
@@ -219,6 +220,14 @@ DATAICO_BASE_URL=https://api.dataico.com/direct/dataico_api/v2
 # verificar origen — ver nota de seguridad en SECURITY.md.
 BOLD_WEBHOOK_TOKEN=<token-compartido-con-bold>
 ADDI_WEBHOOK_TOKEN=<token-compartido-con-addi>
+
+# Resend (correos custom disparados por el backend — no cubre los correos
+# de Supabase Auth como Reset Password, esos usan el SMTP configurado en el
+# dashboard de Supabase). Requerido solo para el correo de rechazo al
+# eliminar un taller no activado (ver BUSINESS_RULES.md).
+RESEND_API_KEY=<api-key-de-resend>
+# Opcional — por defecto EFISCO <soporte@efisco.co>
+RESEND_FROM_EMAIL=EFISCO <soporte@efisco.co>
 ```
 
 > **Nota de seguridad — webhooks de pago:** ver [SECURITY.md](SECURITY.md#webhooks-de-pago).
