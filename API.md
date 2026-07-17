@@ -12,7 +12,8 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 |:---|:---|:---:|:---|
 | POST | `/api/auth/register` | Pública | Registro de un nuevo taller/dueño |
 | POST | `/api/auth/login` | Pública | Login (dueño, empleado o contador) |
-| POST | `/api/auth/reset-password` | Pública | Solicitud de reseteo de contraseña |
+| POST | `/api/auth/request-password-reset` | Pública | Self-service "olvidé mi contraseña" — solo envía el correo real de Supabase si el taller ya fue activado por un admin (`workshop_config.admin_activated_at`); respuesta genérica siempre igual, ver [SECURITY.md](SECURITY.md) |
+| POST | `/api/auth/reset-password` | Taller (token de recovery) | Confirma la nueva contraseña — recibe el `access_token` del link de recovery como Bearer y el password nuevo |
 | POST | `/api/auth/sign-contract` | Taller | Firma electrónica del Contrato de Afiliación B2B (reingreso de contraseña) |
 | POST | `/api/auth/accept-staff-terms` | Taller | Aceptación de la autorización del taller (staff no-dueño) |
 | POST | `/api/auth/verify-password` | Taller | Verifica la contraseña del usuario autenticado |
@@ -41,6 +42,8 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | POST | `/api/mechanics/self` | Taller (owner) | El dueño se registra a sí mismo como mecánico |
 | GET | `/api/mechanics/:id/salary-history` | Taller | Historial salarial |
 | GET | `/api/mechanics/:id/metrics` | Taller | Métricas del mecánico |
+| GET | `/api/mechanics/:id/pending-payment` | Taller | Comisión devengada pendiente de pago (`Σ MECH_COMMISSION − Σ MECH_COMMISSION_PAY`) |
+| POST | `/api/mechanics/:id/pay` | Taller (owner) | Registrar pago real a un mecánico (sueldo y/o comisión) — genera `MECH_SALARY_PAY`/`MECH_COMMISSION_PAY` en el Libro Auxiliar, ver [FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md#caja-real-vs-informativodevengo--por-qué-existe-la-distinción) |
 | PATCH | `/api/mechanics/:id/deactivate` | Taller | Desactivar empleado |
 | PATCH | `/api/mechanics/:id` | Taller | Editar empleado |
 | POST | `/api/mechanics/:id/account` | Taller | Habilitar credenciales de acceso |
@@ -50,14 +53,14 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
-| POST | `/api/work-orders/` | Taller | Crear orden de trabajo |
-| GET | `/api/work-orders/` | Taller | Listar órdenes activas |
-| GET | `/api/work-orders/history` | Taller | Historial de órdenes completadas (incl. mecánico) |
+| POST | `/api/work-orders/` | Taller | Crear orden de trabajo — acepta `services[]` y `mechanics[]` (multi-servicio/multi-mecánico); el payload legacy de escalares sigue soportado. Valida fecha de entrega futura y que todos los asignados tengan rol `mecanico` (400 si no) |
+| GET | `/api/work-orders/` | Taller | Listar órdenes activas (incluye `services[]` con márgenes y `mechanics_detail[]`) |
+| GET | `/api/work-orders/history` | Taller | Historial de órdenes completadas (incl. `mechanics_names[]`/`services_names[]`; para rol mecánico filtra por sus filas en `work_order_mechanics` + el escalar legacy) |
 | GET | `/api/work-orders/pending-by-cedula/:cedula` | Taller | Orden `pending` precargada desde Registro Seguro EFISCO (query `intake_id`) |
 | PUT | `/api/work-orders/:id/pause` | Taller | Pausar/reanudar orden |
 | PUT | `/api/work-orders/:id/finish` | Taller | Marcar como lista para facturar |
 | PUT | `/api/work-orders/:id/status` | Taller | Cambiar estado |
-| PUT | `/api/work-orders/:id` | Taller | Editar orden |
+| PUT | `/api/work-orders/:id` | Taller | Editar orden — mismos arrays y validaciones que el POST; reemplaza las filas hijas (replace-children) |
 | DELETE | `/api/work-orders/:id` | Taller | Eliminar orden |
 
 ## Inventory (`/api/inventory`)
@@ -72,7 +75,7 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | GET | `/api/inventory/history/:id` | Taller | Kardex de un ítem (`requested_at`) |
 | PUT | `/api/inventory/add-stock/:id` | Taller | Registrar entrada de stock |
 | GET | `/api/inventory/work-order/:work_order_id` | Taller | Ítems consumidos por una orden |
-| POST | `/api/inventory/work-order/:work_order_id` | Taller | Añadir repuesto a una orden (descuenta stock) |
+| POST | `/api/inventory/work-order/:work_order_id` | Taller | Añadir repuesto a una orden (descuenta stock; excepción: categoría "Lubricantes y Químicos" con `container_emptied=false` no descuenta, ver [BUSINESS_RULES.md — Inventario](BUSINESS_RULES.md#inventario)) |
 | PUT | `/api/inventory/work-order-item/:item_id` | Taller | Editar ítem dentro de una orden |
 | DELETE | `/api/inventory/work-order-item/:item_id` | Taller | Quitar ítem de una orden |
 | PUT | `/api/inventory/:id` | Taller | Editar ítem de inventario |
@@ -152,6 +155,8 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | GET | `/api/finance/cashflow` | Taller | Flujo de caja detallado por fecha |
 | GET | `/api/finance/referral-discounts` | Taller | Descuentos ganados por referidos |
 | GET | `/api/finance/referral-payout/summary` | Taller | Estado de comisiones de referidos pendientes |
+| GET | `/api/finance/monthly-books` | Taller | Libros mensuales archivados del Libro Auxiliar — hace el **cierre perezoso** de todo mes terminado sin libro (upsert idempotente; el mes en curso nunca se cierra) |
+| GET | `/api/finance/monthly-books/:period` | Taller | Libro completo de un mes (`YYYY-MM`) con su snapshot congelado; 404 si ese mes no está cerrado |
 
 ---
 
@@ -168,6 +173,7 @@ Autenticación separada (`requireAdmin`, `ADMIN_JWT_SECRET`) — ver [SECURITY.m
 | GET | `/api/admin/workshops/:id` | Admin | Detalle de taller |
 | POST | `/api/admin/workshops` | Admin | Crear taller nuevo |
 | PATCH | `/api/admin/workshops/:id/toggle` | Admin | Suspender / reactivar |
+| DELETE | `/api/admin/workshops/:id` | Admin | Elimina permanentemente un taller **no activado** (400 si `admin_activated_at` ya tiene valor) — borra en cascada + notifica por correo al dueño (Resend), ver [SECURITY.md](SECURITY.md) |
 | POST | `/api/admin/workshops/:id/send-password-reset` | Admin | Enviar email de reseteo de contraseña al dueño |
 | POST | `/api/admin/workshops/:id/access-keys/redeem` | Admin | Canjear llave de acceso → token de sesión de soporte |
 | POST | `/api/admin/workshops/:id/software-invoice` | Admin | Subir PDF de factura propia de EFISCO al taller (multipart, ≤10MB, solo PDF) |
