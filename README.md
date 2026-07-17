@@ -21,7 +21,7 @@ Este README es un resumen general. El detalle técnico vive en documentos dedica
 |:---|:---|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Mapa de componentes, ciclo de vida operativo end-to-end, stack tecnológico, decisiones técnicas clave, Kardex, variables de entorno |
 | **[SECURITY.md](SECURITY.md)** | Aislamiento multi-tenant, autenticación admin separada, gates de suspensión/contrato B2B/autorización del taller, RLS de Supabase, webhooks de pago |
-| **[TESTING.md](TESTING.md)** | Suite Jest (35 suites / 175 tests), qué cubre cada una, CI en GitHub Actions |
+| **[TESTING.md](TESTING.md)** | Suite Jest (49 suites / 216 tests), qué cubre cada una, CI en GitHub Actions |
 | **[BUSINESS_RULES.md](BUSINESS_RULES.md)** | Rutas del frontend y reglas de negocio de cada módulo: Recepción, Bahías, Inventario, Proveedores, Equilibrio, Cobros, Flujo de Caja, Referidos, Configuración y Panel Admin EFISCO |
 | **[FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md)** | `financialEngine.js`: liquidación de servicios, liquidación de compras, salud financiera global, tipos de movimiento del Libro Auxiliar |
 | **[API.md](API.md)** | Referencia completa de endpoints REST (`/api/*` y `/api/admin/*`) |
@@ -56,7 +56,7 @@ Arquitectura **multi-tenant** con aislamiento de datos verificado en cada endpoi
 
 ## Módulos del Sistema (resumen)
 
-El dueño del taller opera desde `/dashboard`, `/recepcion`, `/bahia`, `/inventario`, `/proveedores`, `/config`, y paneles financieros (`/finanzas`, `/equilibrio`, `/cobros`, `/flujo-caja`). El cliente final interactúa vía un link público de WhatsApp (`/cliente/registro/:workshopId/:intakeId`) para completar su registro y ver su score crediticio. El contador tiene un panel propio (`/contador`) para los campos fiscales/PUC/Dataico que el dueño solo puede leer.
+Para un visitante sin sesión, `/` es la **página de presentación pública** (`Landing.jsx` — funciones, demo, CTA de registro/login); `/login` es el formulario de autenticación (mismo componente alterna login/registro/recuperar-contraseña). El dueño del taller, ya autenticado, opera desde `/dashboard`, `/recepcion`, `/bahia`, `/inventario`, `/proveedores`, `/config`, y paneles financieros (`/finanzas`, `/equilibrio`, `/cobros`, `/flujo-caja`). El cliente final interactúa vía un link público de WhatsApp (`/cliente/registro/:workshopId/:intakeId`) para completar su registro y ver su score crediticio. El contador tiene un panel propio (`/contador`) para los campos fiscales/PUC/Dataico que el dueño solo puede leer.
 
 Flujo típico: **Recepción** (ingreso + score crediticio) → **Bahía** (ejecución, consumo de inventario con Kardex inmutable, clasificación de tier) → **Liquidación** (motor financiero + factura Dataico + comprobante por WhatsApp) → **Cobros/Flujo de Caja** (si fue a crédito).
 
@@ -82,7 +82,7 @@ Estado auditado del Security Advisor de Supabase, autenticación admin, llaves d
 
 ## Testing (resumen)
 
-`backend/tests/` — Jest con ESM nativo (`--experimental-vm-modules`): **35 suites / 175 tests**, todos contra lógica pura o con Supabase/auth mockeados, sin tocar la base real. Cubre el motor financiero, clasificador de vehículos, OCR, inventario, comisiones de mecánicos, gates de seguridad (contrato B2B, autorización del taller, sesión de soporte), facturación Dataico (incl. Caso 2 — EFISCO como emisor), y Mercado Pago. CI en GitHub Actions corre la suite en cada push/PR a `main`/`develop`.
+`backend/tests/` — Jest con ESM nativo (`--experimental-vm-modules`): **49 suites / 216 tests**, todos contra lógica pura o con Supabase/auth mockeados, sin tocar la base real. Cubre el motor financiero (incl. la distinción caja real vs. devengo), clasificador de vehículos, OCR, inventario (incl. consumo gradual de líquidos/químicos), comisiones y pagos de mecánicos, gates de seguridad (contrato B2B, autorización del taller, sesión de soporte), facturación Dataico (incl. Caso 2 — EFISCO como emisor), y Mercado Pago. CI en GitHub Actions corre la suite en cada push/PR a `main`/`develop`.
 
 Detalle de qué cubre cada suite y configuración de CI en **[TESTING.md](TESTING.md)**.
 
