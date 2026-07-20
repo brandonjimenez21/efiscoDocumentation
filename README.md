@@ -21,7 +21,7 @@ Este README es un resumen general. El detalle técnico vive en documentos dedica
 |:---|:---|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Mapa de componentes, ciclo de vida operativo end-to-end, stack tecnológico, decisiones técnicas clave, Kardex, variables de entorno |
 | **[SECURITY.md](SECURITY.md)** | Aislamiento multi-tenant, autenticación admin separada, gates de suspensión/contrato B2B/autorización del taller, RLS de Supabase, webhooks de pago |
-| **[TESTING.md](TESTING.md)** | Suite Jest (49 suites / 216 tests), qué cubre cada una, CI en GitHub Actions |
+| **[TESTING.md](TESTING.md)** | Suite Jest (71 suites / 330 tests), qué cubre cada una, CI en GitHub Actions |
 | **[BUSINESS_RULES.md](BUSINESS_RULES.md)** | Rutas del frontend y reglas de negocio de cada módulo: Recepción, Bahías, Inventario, Proveedores, Equilibrio, Cobros, Flujo de Caja, Referidos, Configuración y Panel Admin EFISCO |
 | **[FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md)** | `financialEngine.js`: liquidación de servicios, liquidación de compras, salud financiera global, tipos de movimiento del Libro Auxiliar |
 | **[API.md](API.md)** | Referencia completa de endpoints REST (`/api/*` y `/api/admin/*`) |
@@ -56,7 +56,7 @@ Arquitectura **multi-tenant** con aislamiento de datos verificado en cada endpoi
 
 ## Módulos del Sistema (resumen)
 
-Para un visitante sin sesión, `/` es la **página de presentación pública** (`Landing.jsx` — funciones, demo, CTA de registro/login); `/login` es el formulario de autenticación (mismo componente alterna login/registro/recuperar-contraseña). El dueño del taller, ya autenticado, opera desde `/dashboard`, `/recepcion`, `/bahia`, `/inventario`, `/proveedores`, `/config`, y paneles financieros (`/finanzas`, `/equilibrio`, `/cobros`, `/flujo-caja`). El cliente final interactúa vía un link público de WhatsApp (`/cliente/registro/:workshopId/:intakeId`) para completar su registro y ver su score crediticio. El contador tiene un panel propio (`/contador`) para los campos fiscales/PUC/Dataico que el dueño solo puede leer.
+Para un visitante sin sesión, `/` es la **página de presentación pública** (`Landing.jsx` — funciones, resumen del Flujo de Caja con link a `/demo` para el detalle completo, CTA de registro/login); `/login` es el formulario de autenticación (mismo componente alterna login/registro/recuperar-contraseña). El dueño del taller, ya autenticado, opera desde `/dashboard`, `/recepcion`, `/bahia`, `/inventario`, `/proveedores`, `/config`, y paneles financieros (`/finanzas`, `/equilibrio`, `/cobros`, `/flujo-caja`). El cliente final interactúa vía un link público de WhatsApp (`/cliente/registro/:workshopId/:intakeId`) para completar su registro y ver su score crediticio. El contador tiene un panel propio (`/contador`) para los campos fiscales/PUC/Dataico que el dueño solo puede leer.
 
 Flujo típico: **Recepción** (ingreso + score crediticio) → **Bahía** (ejecución, consumo de inventario con Kardex inmutable, clasificación de tier) → **Liquidación** (motor financiero + factura Dataico + comprobante por WhatsApp) → **Cobros/Flujo de Caja** (si fue a crédito).
 
@@ -66,7 +66,7 @@ Reglas de negocio completas de cada módulo, tabla de rutas con niveles de acces
 
 ## Motor Financiero (resumen)
 
-`backend/utils/financialEngine.js` es el núcleo de cálculo inmutable: liquida servicios (mano de obra + repuestos, IVA, retenciones si el cliente es agente retenedor, comisión de pasarela Bold/Addi), liquida compras a proveedor (retenciones según régimen tributario, GMF 4×1000), y calcula la salud financiera global (`bankBalance`, `ivaLiability`, `realBankBalance`). Constantes 2026: UVT = $50.318, umbral de retenciones = 27 UVT ≈ $1.358.586. Cada movimiento queda registrado en el **Libro Auxiliar** (`cash_flow_ledger`), un ledger append-only con 15 tipos de movimiento (`INC_GROSS`, `TAX_IVA`, `RET_FUENT`, `GW_FEE`, etc.).
+`backend/utils/financialEngine.js` es el núcleo de cálculo inmutable: liquida servicios (mano de obra + repuestos, IVA, retenciones si el cliente es agente retenedor, comisión de pasarela Bold/Addi), liquida compras a proveedor (matriz de retenciones según régimen tributario del taller Y del proveedor, GMF 4×1000, pago a plazos), y calcula la salud financiera global (`bankBalance`, `ivaLiability`, `realBankBalance`). Constantes 2026: UVT = $50.318, umbral de retenciones servicios = 2 UVT, compras = 10 UVT (Decreto 572/2025 vigente — en litigio activo, revisar periódicamente). Cada movimiento queda registrado en el **Libro Auxiliar** (`cash_flow_ledger`), un ledger append-only con 15+ tipos de movimiento (`INC_GROSS`, `TAX_IVA`, `RET_FUENT`, `GW_FEE`, etc.), exportable como un **Libro Mayor único en Excel** desde el panel del contador.
 
 Fórmulas completas, matriz de decisión de liquidación y la tabla de tipos de movimiento en **[FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md)**.
 
@@ -82,15 +82,17 @@ Estado auditado del Security Advisor de Supabase, autenticación admin, llaves d
 
 ## Testing (resumen)
 
-`backend/tests/` — Jest con ESM nativo (`--experimental-vm-modules`): **49 suites / 216 tests**, todos contra lógica pura o con Supabase/auth mockeados, sin tocar la base real. Cubre el motor financiero (incl. la distinción caja real vs. devengo), clasificador de vehículos, OCR, inventario (incl. consumo gradual de líquidos/químicos), comisiones y pagos de mecánicos, gates de seguridad (contrato B2B, autorización del taller, sesión de soporte), facturación Dataico (incl. Caso 2 — EFISCO como emisor), y Mercado Pago. CI en GitHub Actions corre la suite en cada push/PR a `main`/`develop`.
+`backend/tests/` — Jest con ESM nativo (`--experimental-vm-modules`): **69 suites / 322 tests**, todos contra lógica pura o con Supabase/auth mockeados, sin tocar la base real. Cubre el motor financiero (incl. la distinción caja real vs. devengo), clasificador de vehículos, OCR, inventario (incl. consumo gradual de líquidos/químicos), comisiones y pagos de mecánicos, gates de seguridad (contrato B2B, autorización del taller, sesión de soporte), facturación Dataico (incl. Caso 2 — EFISCO como emisor), y Mercado Pago. CI en GitHub Actions corre la suite en cada push/PR a `main`/`develop`.
 
-Detalle de qué cubre cada suite y configuración de CI en **[TESTING.md](TESTING.md)**.
+Aparte, `backend/loadtest/` (rev. 28, manual, fuera de CI) tiene una prueba de carga con Artillery contra un taller desechable sin credenciales Dataico (local y producción, ambas en verde con 0 fallos) y dos smoke-tests de un solo disparo que sí probaron la emisión real ante la DIAN (Caso 1 y Caso 2) — encontraron y confirmaron el fix de los primeros bugs reales de Dataico nunca antes ejercitados contra su API real.
+
+Detalle de qué cubre cada suite, configuración de CI, y la prueba de carga en **[TESTING.md](TESTING.md)**.
 
 ---
 
 ## Variables de Entorno
 
-`backend/.env` requiere credenciales de Supabase, JWT (taller y admin, separados), AWS Textract, WhatsApp Cloud API, Dataico y (opcional pero recomendado) tokens de verificación de webhooks Bold/Addi.
+`backend/.env` requiere credenciales de Supabase, JWT (taller y admin, separados), AWS Textract, WhatsApp Cloud API, Dataico y los tokens de verificación de webhooks (Bold/Addi/Mercado Pago) — **requeridos para confirmar pagos**: los webhooks son fail-closed y rechazan notificaciones si el token no está configurado (ver [SECURITY.md](SECURITY.md#webhooks-de-pago)).
 
 Plantilla completa y notas de seguridad en **[ARCHITECTURE.md](ARCHITECTURE.md#variables-de-entorno)**.
 
