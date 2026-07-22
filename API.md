@@ -2,9 +2,9 @@
 
 > Ver también: [README](README.md) · [ARCHITECTURE](ARCHITECTURE.md) · [SECURITY](SECURITY.md) · [BUSINESS_RULES](BUSINESS_RULES.md)
 
-Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/server.js`) y requieren `requireAuth` salvo que se indique **Pública**. `requireAuth` inyecta `workshop_id`/rol desde la sesión — ver el modelo de aislamiento en [SECURITY.md](SECURITY.md).
+Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/server.js`) y requieren `requireAuth` salvo que se indique **Pública**. `requireAuth` inyecta `workshop_id`/rol desde la sesión ver el modelo de aislamiento en [SECURITY.md](SECURITY.md).
 
-**Errores 500 (fix 2026-07-19)**: todos los controllers responden `{ error: friendlyDbError(error) }` (`backend/utils/dbErrors.js`) en vez de `{ error: error.message }` crudo — antes un error real de Postgres (constraints, nombres de columna, "duplicate key value...") se mostraba tal cual al cajero/dueño. `friendlyDbError` distingue por `error.code` (SQLSTATE, solo lo tienen los errores reales de base de datos): si hay `code`, devuelve un mensaje mapeado en español; si no (un `Error` de aplicación que ya construyó su propio mensaje, ej. "Repuesto no encontrado"), devuelve `error.message` intacto — no cambia ningún mensaje 4xx existente, solo cierra la fuga de detalles internos en los 500 reales.
+**Errores 500 (fix 2026-07-19)**: todos los controllers responden `{ error: friendlyDbError(error) }` (`backend/utils/dbErrors.js`) en vez de `{ error: error.message }` crudo antes un error real de Postgres (constraints, nombres de columna, "duplicate key value...") se mostraba tal cual al cajero/dueño. `friendlyDbError` distingue por `error.code` (SQLSTATE, solo lo tienen los errores reales de base de datos): si hay `code`, devuelve un mensaje mapeado en español; si no (un `Error` de aplicación que ya construyó su propio mensaje, ej. "Repuesto no encontrado"), devuelve `error.message` intacto no cambia ningún mensaje 4xx existente, solo cierra la fuga de detalles internos en los 500 reales.
 
 ---
 
@@ -13,9 +13,12 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
 | POST | `/api/auth/register` | Pública | Registro de un nuevo taller/dueño |
-| POST | `/api/auth/login` | Pública | Login (dueño, empleado o contador) — rate-limit de 10 intentos fallidos por `(IP, email)` cada 15 min (429), ver [SECURITY.md](SECURITY.md#endurecimiento-de-seguridad-2026-07-19) |
+| POST | `/api/auth/login` | Pública | Login (dueño, empleado o contador) — rate-limit de 10 intentos fallidos por `(IP, email)` cada 15 min (429), ver [SECURITY.md](SECURITY.md#endurecimiento-de-seguridad-2026-07-19). Setea la cookie httpOnly `efisco_token` (ver [Migración a cookies httpOnly](SECURITY.md#migración-de-autenticación-a-cookies-httponly-2026-07-21)); el body ya no incluye el token, solo `user` y `expiresAt` |
+| POST | `/api/auth/logout` | Pública | Limpia la cookie `efisco_token` |
+| GET | `/api/auth/me` | Taller | Restaura la sesión al recargar la página (la cookie httpOnly ya no se puede leer/decodificar en el cliente) — devuelve el mismo `user` rico que `login()`, exento de los gates de contrato/autorización del taller |
+| GET | `/api/auth/support-session/exchange` | Pública (token de un solo uso en la URL) | Puente de la llave de acceso a cuenta del cliente — valida el `support_token` emitido por `POST /api/admin/workshops/:id/access-keys/redeem` y setea la cookie de sesión |
 | POST | `/api/auth/request-password-reset` | Pública | Self-service "olvidé mi contraseña" — solo envía el correo real de Supabase si el taller ya fue activado por un admin (`workshop_config.admin_activated_at`); respuesta genérica siempre igual, ver [SECURITY.md](SECURITY.md) |
-| POST | `/api/auth/reset-password` | Taller (token de recovery) | Confirma la nueva contraseña — recibe el `access_token` del link de recovery como Bearer y el password nuevo |
+| POST | `/api/auth/reset-password` | Taller (token de recovery) | Confirma la nueva contraseña — recibe el `access_token` del link de recovery como Bearer y el password nuevo (excepción: este token viaja por header, no por cookie — ver [SECURITY.md](SECURITY.md#migración-de-autenticación-a-cookies-httponly-2026-07-21)) |
 | POST | `/api/auth/sign-contract` | Taller | Firma electrónica del Contrato de Afiliación B2B (reingreso de contraseña) |
 | POST | `/api/auth/accept-staff-terms` | Taller | Aceptación de la autorización del taller (staff no-dueño) |
 | POST | `/api/auth/verify-password` | Taller | Verifica la contraseña del usuario autenticado |
@@ -92,7 +95,7 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | PUT | `/api/providers/:id` | Taller | Editar proveedor — scoped al taller de la sesión (404 si no es suyo), lista blanca de campos editables (no acepta `workshop_id`/`is_system_provider`), 403 si `is_system_provider` |
 | DELETE | `/api/providers/:id` | Taller | Eliminar proveedor — scoped al taller de la sesión (404 si no es suyo), 403 si `is_system_provider` |
 | POST | `/api/providers/invoice-ocr` | Taller | OCR de factura (AWS Textract, imagen ≤5MB) |
-| POST | `/api/providers/purchase` | Taller | Registrar compra y liquidar (`financialEngine.liquidateSupplierPurchase`) — acepta `payment_mode:'credito'`+`num_installments`+`first_payment_date` para pago a plazos (genera `supplier_installments`, cabecera en `status:'pendiente'`) |
+| POST | `/api/providers/purchase` | Taller | Registrar compra y liquidar (`financialEngine.liquidateSupplierPurchase`) — acepta `payment_mode:'credito'`+`num_installments`+`first_payment_date` para pago a plazos (genera `supplier_installments`, cabecera en `status:'pendiente'`); `due_dates` opcional (array de "YYYY-MM-DD", una por cuota) manda sobre el cálculo automático por intervalo si el frontend edita las fechas a mano (rev. 48) |
 | GET | `/api/providers/efficiency` | Taller | Eficiencia de entrega (Fase 3) |
 | GET | `/api/providers/installments` | Taller | Listar cuotas por pagar a proveedores |
 | PATCH | `/api/providers/installments/:id/pay` | Taller | Pagar una cuota — genera la salida de caja real (`SUP_PAY` con `net_amount = amount`) |
@@ -102,10 +105,10 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
-| POST | `/api/services/` | Taller | Crear servicio maestro |
+| POST | `/api/services/` | Taller | Crear servicio maestro — `gama`/`complejidad` obligatorios (`'Alta'`\|`'Baja'`, 400 si no), usados solo para sugerir `base_margin_basic`/`base_margin_premium` en el formulario (rev. 49) |
 | GET | `/api/services/:workshop_id/:vehicleType` | Taller | Servicios por tipo de vehículo |
 | GET | `/api/services/` | Taller | Listar todos los servicios |
-| PUT | `/api/services/:id` | Taller | Editar servicio (márgenes básico/premium) |
+| PUT | `/api/services/:id` | Taller | Editar servicio (márgenes básico/premium, `gama`/`complejidad` obligatorios igual que en creación) |
 | DELETE | `/api/services/:id` | Taller | Eliminar servicio |
 
 ## Quick Intakes / Recepción (`/api/quick-intakes`)
@@ -138,7 +141,7 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
-| POST | `/api/billing/settle` | Taller | Liquidar orden (`financialEngine.liquidateClientInvoice`, emite Dataico + comprobante WhatsApp) |
+| POST | `/api/billing/settle` | Taller | Liquidar orden (`financialEngine.liquidateClientInvoice`, emite Dataico + comprobante WhatsApp) — acepta `payment_mode:'credito'`+`num_installments`+`first_payment_date` para venta a crédito; `due_dates` opcional (array de "YYYY-MM-DD", una por cuota) manda sobre el cálculo automático por intervalo si el frontend edita las fechas a mano (rev. 48) |
 | GET | `/api/billing/installments` | Taller | Listar cuotas de crédito |
 | PATCH | `/api/billing/installments/:id/pay` | Taller | Pagar cuota (genera `INC_GROSS`, envía comprobante WhatsApp) |
 | POST | `/api/billing/webhook/bold` | Pública (webhook) | Confirmación de pago Bold — **fail-closed**: rechaza si `BOLD_WEBHOOK_TOKEN` no está configurado; comparación de token constant-time + log de auditoría en cada rechazo, ver [SECURITY.md](SECURITY.md#webhooks-de-pago) |
@@ -184,8 +187,10 @@ Autenticación separada (`requireAdmin`, `ADMIN_JWT_SECRET`) — ver [SECURITY.m
 
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
-| POST | `/api/admin/bootstrap` | Pública | Crea primer admin (solo si tabla vacía) |
-| POST | `/api/admin/login` | Pública | Login admin con email/password |
+| POST | `/api/admin/bootstrap` | Pública | Crea primer admin (solo si tabla vacía). Setea la cookie httpOnly `efisco_admin_token` — el body ya no incluye el token |
+| POST | `/api/admin/login` | Pública | Login admin con email/password. Setea la cookie httpOnly `efisco_admin_token` — el body ya no incluye el token |
+| POST | `/api/admin/logout` | Pública | Limpia la cookie `efisco_admin_token` |
+| GET | `/api/admin/me` | Admin | Restaura la sesión admin al recargar la página (mismo motivo que `GET /api/auth/me`) |
 | GET | `/api/admin/stats` | Admin | KPIs del dashboard |
 | GET | `/api/admin/workshops` | Admin | Lista talleres (con emails de Supabase Auth) |
 | GET | `/api/admin/workshops/:id` | Admin | Detalle de taller — incluye `contract_acceptance` (constancia de firma del Contrato B2B: versión, hash, IP, fecha; `null` si no ha firmado), ver [SECURITY.md](SECURITY.md) |
