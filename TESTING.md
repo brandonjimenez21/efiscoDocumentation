@@ -2,12 +2,12 @@
 
 > Ver también: [README](README.md) · [FINANCIAL_ENGINE](FINANCIAL_ENGINE.md) · [SECURITY](SECURITY.md)
 
-`backend/tests/` — Jest con `--experimental-vm-modules` (ESM nativo, sin transpilar). 71 suites / 330 tests, todos contra lógica pura o con Supabase/auth mockeados (`jest.unstable_mockModule`), sin tocar la base real:
+`backend/tests/` — Jest con `--experimental-vm-modules` (ESM nativo, sin transpilar). 72 suites / 346 tests, todos contra lógica pura o con Supabase/auth mockeados (`jest.unstable_mockModule`), sin tocar la base real:
 
 | Suite | Cubre |
 |:---|:---|
 | `financialEngine.test.js` | Liquidación de servicios, compras, comisiones de pasarela, salud financiera global. Matriz de retenciones taller×cliente en ventas (rev. 38 — Régimen Simple exento de ReteFuente/ReteICA pero no de ReteIVA, Gran Contribuyente autorretenedor nunca retenido, ver [FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md#matriz-de-retenciones-taller--cliente-en-ventas-rev-38)); matriz de retenciones taller×proveedor en compras (proveedor Gran Contribuyente nunca se retiene; proveedor Simple exento de ReteFuente/ReteICA pero con ReteIVA obligatoria; comprador Gran Contribuyente sí retiene ReteIVA a un proveedor Ordinario, uno simplemente Ordinario no); retención de la Pasarela sobre el giro (ReteRenta+ReteIVA+ReteICA, solo Régimen Ordinario, rev. 38); `reteiva_rate` configurable en vez del 15% fijo |
-| `pricing.test.js` | Márgenes básico/premium por tier |
+| `pricing.test.js` | Márgenes básico/premium por tier de inventario; margen de mano de obra por Gama×Complejidad (`getServiceMargin`/`getServiceMarginRange`, 4 combinaciones documentadas + default para las no documentadas, rev. 49 — ver [FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md#margen-de-mano-de-obra-por-gamacomplejidad-rev-49)) |
 | `vehicleClassifier.test.js` | Clasificación de vehículos por catálogo de marcas |
 | `validators.test.js` | Validaciones de entrada de finanzas/configuración |
 | `ocr.test.js` | Parsing de resultados de AWS Textract |
