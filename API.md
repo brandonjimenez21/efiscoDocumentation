@@ -2,9 +2,9 @@
 
 > Ver también: [README](README.md) · [ARCHITECTURE](ARCHITECTURE.md) · [SECURITY](SECURITY.md) · [BUSINESS_RULES](BUSINESS_RULES.md)
 
-Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/server.js`) y requieren `requireAuth` salvo que se indique **Pública**. `requireAuth` inyecta `workshop_id`/rol desde la sesión ver el modelo de aislamiento en [SECURITY.md](SECURITY.md).
+Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/server.js`) y requieren `requireAuth` salvo que se indique **Pública**. `requireAuth` inyecta `workshop_id`/rol desde la sesión — ver el modelo de aislamiento en [SECURITY.md](SECURITY.md).
 
-**Errores 500 (fix 2026-07-19)**: todos los controllers responden `{ error: friendlyDbError(error) }` (`backend/utils/dbErrors.js`) en vez de `{ error: error.message }` crudo antes un error real de Postgres (constraints, nombres de columna, "duplicate key value...") se mostraba tal cual al cajero/dueño. `friendlyDbError` distingue por `error.code` (SQLSTATE, solo lo tienen los errores reales de base de datos): si hay `code`, devuelve un mensaje mapeado en español; si no (un `Error` de aplicación que ya construyó su propio mensaje, ej. "Repuesto no encontrado"), devuelve `error.message` intacto no cambia ningún mensaje 4xx existente, solo cierra la fuga de detalles internos en los 500 reales.
+**Errores 500 (fix 2026-07-19)**: todos los controllers responden `{ error: friendlyDbError(error) }` (`backend/utils/dbErrors.js`) en vez de `{ error: error.message }` crudo — antes un error real de Postgres (constraints, nombres de columna, "duplicate key value...") se mostraba tal cual al cajero/dueño. `friendlyDbError` distingue por `error.code` (SQLSTATE, solo lo tienen los errores reales de base de datos): si hay `code`, devuelve un mensaje mapeado en español; si no (un `Error` de aplicación que ya construyó su propio mensaje, ej. "Repuesto no encontrado"), devuelve `error.message` intacto — no cambia ningún mensaje 4xx existente, solo cierra la fuga de detalles internos en los 500 reales.
 
 ---
 
@@ -58,32 +58,33 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
-| POST | `/api/work-orders/` | Taller | Crear orden de trabajo — acepta `services[]` y `mechanics[]` (multi-servicio/multi-mecánico); el payload legacy de escalares sigue soportado. Valida fecha de entrega futura y que todos los asignados tengan rol `mecanico` (400 si no) |
+| POST | `/api/work-orders/` | Taller | Crear orden de trabajo — acepta `services[]` y `mechanics[]` (multi-servicio/multi-mecánico); el payload legacy de escalares sigue soportado. Valida fecha de entrega futura, dentro del horario del taller (`workshop_config.open_time`/`close_time`, agregado 2026-07-25, 400 si no) y que todos los asignados tengan rol `mecanico` (400 si no) |
 | GET | `/api/work-orders/` | Taller | Listar órdenes activas (incluye `services[]` con márgenes y `mechanics_detail[]`) |
-| GET | `/api/work-orders/history` | Taller | Historial de órdenes completadas (incl. `mechanics_names[]`/`services_names[]`; para rol mecánico filtra por sus filas en `work_order_mechanics` + el escalar legacy). Acepta `from`/`to` (rango sobre `end_time`) y `limit`/`offset` (default 50, tope 100) — respuesta `{ data, total }`, no un array plano (fix 2026-07-19, antes traía todo el historial sin límite, ver [BUSINESS_RULES.md](BUSINESS_RULES.md#bahías-órdenes-de-trabajo)) |
+| GET | `/api/work-orders/history` | Taller | Historial de órdenes completadas (incl. `mechanics_names[]`/`services_names[]`/`parts_used[]` — repuesto, cantidad, lado/posición y proveedor si se eligió uno, agregado 2026-07-23; para rol mecánico filtra por sus filas en `work_order_mechanics` + el escalar legacy). Acepta `from`/`to` (rango sobre `end_time`) y `limit`/`offset` (default 50, tope 100) — respuesta `{ data, total }`, no un array plano (fix 2026-07-19, antes traía todo el historial sin límite, ver [BUSINESS_RULES.md](BUSINESS_RULES.md#bahías-órdenes-de-trabajo)) |
+| GET | `/api/work-orders/history/calendar` | Taller | Conteo de órdenes completadas por día para un mes (`?month=YYYY-MM`, default mes en curso) — agregado 2026-07-25 para el calendario de `Historial.jsx`, mismo filtro de rol/mecánico que `/history` pero sin traer filas completas (solo `id, end_time`) |
 | GET | `/api/work-orders/pending-by-cedula/:cedula` | Taller | Orden `pending` precargada desde Registro Seguro EFISCO (query `intake_id`) |
 | PUT | `/api/work-orders/:id/pause` | Taller | Pausar/reanudar orden |
 | PUT | `/api/work-orders/:id/finish` | Taller | Marcar como lista para facturar |
 | PUT | `/api/work-orders/:id/status` | Taller | Cambiar estado — validado contra los 4 valores reales del flujo (`pending/ejecucion/ready_to_invoice/completed`), 400 si no coincide (fix 2026-07-19; antes aceptaba cualquier string, ver [BUSINESS_RULES.md — Bahías](BUSINESS_RULES.md#bahías-órdenes-de-trabajo)) |
-| PUT | `/api/work-orders/:id` | Taller | Editar orden — mismos arrays y validaciones que el POST; reemplaza las filas hijas (replace-children) |
-| DELETE | `/api/work-orders/:id` | Taller | Eliminar orden |
+| PUT | `/api/work-orders/:id` | Taller | Editar orden — mismos arrays y validaciones que el POST (incl. horario del taller, "solo si el valor cambió" igual que el guard de fecha en el pasado); reemplaza las filas hijas (replace-children). **409 si la orden ya está `ready_to_invoice`** (agregado 2026-07-25 — una orden finalizada no se puede editar, ver [BUSINESS_RULES.md — Bahías](BUSINESS_RULES.md#bahías-órdenes-de-trabajo)) |
+| DELETE | `/api/work-orders/:id` | Taller | Eliminar orden — **409 si la orden ya está `ready_to_invoice`** (agregado 2026-07-25, mismo criterio que el PUT) |
 
 ## Inventory (`/api/inventory`)
 
 | Método | Ruta | Auth | Descripción |
 |:---|:---|:---:|:---|
 | GET | `/api/inventory/` | Taller | Listar inventario |
-| POST | `/api/inventory/standalone` | Taller | Alta de ítem sin compra asociada — cantidad inicial validada (≥0) y `measure` contra `validateMeasure` si viene con `category`, mismo criterio que añadir un repuesto a una orden (fix 2026-07-19) |
+| POST | `/api/inventory/standalone` | Taller | Alta de ítem sin compra asociada — cantidad inicial validada (≥0) y `measure` contra `validateMeasure` si viene con `category`, mismo criterio que añadir un repuesto a una orden (fix 2026-07-19). Acepta `default_part_side`/`default_part_position` (agregado 2026-07-23) — ubicación habitual del ítem, autocompleta (editable) el Lado/Posición al agregarlo a una orden en Bahía |
 | GET | `/api/inventory/total-investment` | Taller | Valor total de inventario |
 | GET | `/api/inventory/matrix` | Taller | Tab "Matriz": rotación, uso promedio, stock mínimo vital |
 | GET | `/api/inventory/pending-invoices/today` | Taller | Facturas OCR pendientes de revisión del día |
-| GET | `/api/inventory/history/:id` | Taller | Kardex de un ítem (`requested_at`) |
+| GET | `/api/inventory/history/:id` | Taller | Kardex de un ítem, ordenado por `requested_at` (bug real corregido 2026-07-23: antes ordenaba por `created_at`, columna inexistente en `inventory_transactions` — Postgres rechazaba la consulta completa, 500 sin importar el ítem; expuesto como `created_at` en la respuesta por alias, no por columna, porque el frontend ya esperaba ese nombre) |
 | PUT | `/api/inventory/add-stock/:id` | Taller | Registrar entrada de stock — cantidad validada como número positivo, 400 si no (fix 2026-07-19; antes un valor no numérico o negativo corrompía `current_stock`) |
-| GET | `/api/inventory/work-order/:work_order_id` | Taller | Ítems consumidos por una orden |
-| POST | `/api/inventory/work-order/:work_order_id` | Taller | Añadir repuesto a una orden (descuenta stock; excepción: categoría "Lubricantes y Químicos" con `container_emptied=false` no descuenta, ver [BUSINESS_RULES.md — Inventario](BUSINESS_RULES.md#inventario)) — cantidad validada como entero positivo y topada contra el stock disponible (409 si no alcanza), fix 2026-07-19 |
+| GET | `/api/inventory/work-order/:work_order_id` | Taller | Ítems consumidos por una orden, incl. `providers.name` (join, agregado 2026-07-23 — `null` si no se eligió proveedor al agregarlo) |
+| POST | `/api/inventory/work-order/:work_order_id` | Taller | Añadir repuesto a una orden (descuenta stock; excepción: categoría "Lubricantes y Químicos" con `container_emptied=false` no descuenta, ver [BUSINESS_RULES.md — Inventario](BUSINESS_RULES.md#inventario)) — cantidad validada como entero positivo y topada contra el stock disponible (409 si no alcanza), fix 2026-07-19. Acepta `provider_id`/`part_side`/`part_position` (bug real corregido 2026-07-23 — el frontend ya los mandaba desde antes, pero este endpoint nunca los leía del body ni los guardaba; ver [BUSINESS_RULES.md — Bahías](BUSINESS_RULES.md#bahías-órdenes-de-trabajo)) |
 | PUT | `/api/inventory/work-order-item/:item_id` | Taller | Editar ítem dentro de una orden |
 | DELETE | `/api/inventory/work-order-item/:item_id` | Taller | Quitar ítem de una orden |
-| PUT | `/api/inventory/:id` | Taller | Editar ítem de inventario |
+| PUT | `/api/inventory/:id` | Taller | Editar ítem de inventario, incl. `default_part_side`/`default_part_position` (agregado 2026-07-23). **Ignora `quantity`** (bug real corregido 2026-07-25) — este endpoint no puede tocar el stock aunque se lo manden; solo `PUT /api/inventory/add-stock/:id` ("Añadir Stock") lo mueve, porque es el único que genera `inventory_transactions` |
 | DELETE | `/api/inventory/:id` | Taller | Eliminar ítem de inventario |
 
 ## Providers (`/api/providers`)
@@ -95,7 +96,7 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | PUT | `/api/providers/:id` | Taller | Editar proveedor — scoped al taller de la sesión (404 si no es suyo), lista blanca de campos editables (no acepta `workshop_id`/`is_system_provider`), 403 si `is_system_provider` |
 | DELETE | `/api/providers/:id` | Taller | Eliminar proveedor — scoped al taller de la sesión (404 si no es suyo), 403 si `is_system_provider` |
 | POST | `/api/providers/invoice-ocr` | Taller | OCR de factura (AWS Textract, imagen ≤5MB) |
-| POST | `/api/providers/purchase` | Taller | Registrar compra y liquidar (`financialEngine.liquidateSupplierPurchase`) — acepta `payment_mode:'credito'`+`num_installments`+`first_payment_date` para pago a plazos (genera `supplier_installments`, cabecera en `status:'pendiente'`); `due_dates` opcional (array de "YYYY-MM-DD", una por cuota) manda sobre el cálculo automático por intervalo si el frontend edita las fechas a mano (rev. 48) |
+| POST | `/api/providers/purchase` | Taller | Registrar compra y liquidar (`financialEngine.liquidateSupplierPurchase`) — acepta `payment_mode:'credito'`+`num_installments`+`first_payment_date` para pago a plazos (genera `supplier_installments`, cabecera en `status:'pendiente'`); `due_dates` opcional (array de "YYYY-MM-DD", una por cuota) manda sobre el cálculo automático por intervalo si el frontend edita las fechas a mano (rev. 48). **`payment_method` obligatorio** (`banco`/`tarjeta`/`efectivo`, 400 si falta o es otro valor — bug real corregido 2026-07-25, antes tenía default silencioso `'banco'`) |
 | GET | `/api/providers/efficiency` | Taller | Eficiencia de entrega (Fase 3) |
 | GET | `/api/providers/installments` | Taller | Listar cuotas por pagar a proveedores |
 | PATCH | `/api/providers/installments/:id/pay` | Taller | Pagar una cuota — genera la salida de caja real (`SUP_PAY` con `net_amount = amount`) |
@@ -178,6 +179,7 @@ Todas las rutas de taller (no-admin) están montadas bajo `/api/*` (`backend/ser
 | GET | `/api/finance/referral-payout/summary` | Taller | Estado de comisiones de referidos pendientes |
 | GET | `/api/finance/monthly-books` | Taller | Libros mensuales archivados del Libro Auxiliar — hace el **cierre perezoso** de todo mes terminado sin libro (upsert idempotente; el mes en curso nunca se cierra) |
 | GET | `/api/finance/monthly-books/:period` | Taller | Libro completo de un mes (`YYYY-MM`) con su snapshot congelado; 404 si ese mes no está cerrado |
+| GET | `/api/finance/monthly-operating-summary/:period` | Taller | Ingresos/Costos/Utilidad Neta de un mes cualquiera (cerrado o en curso) en base de DEVENGO, calculado al vuelo desde `cash_flow_ledger` — nunca desde `monthly_ledger_books` (base de caja, no comparable). Usado por el gráfico de comparación mensual del Dashboard, ver [FINANCIAL_ENGINE.md](FINANCIAL_ENGINE.md#caja-real-vs-informativodevengo--por-qué-existe-la-distinción). 400 si el período no tiene formato `YYYY-MM` |
 
 ---
 
