@@ -1,0 +1,3 @@
+# _propios/ contiene los archivos fuente de la versión pública (README y SEGURIDAD); se copian a la raíz al generar.
+_propios/
+.DS_Store
