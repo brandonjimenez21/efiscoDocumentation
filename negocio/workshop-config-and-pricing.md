@@ -69,13 +69,12 @@ Un taller nuevo se **solicita**, no se activa solo — EFISCO verifica manualmen
 
 ## Gate de Configuración Inicial (SetupGate)
 
-Un taller recién activado no puede operar (ni siquiera navegar a Recepción/Bahía/Inventario) hasta completar 3 requisitos mínimos — `frontend/src/components/SetupGate.jsx` bloquea toda la app (salvo `/config`) mientras falte alguno, leyendo el estado de `useSetupStore` (`GET /api/workshop/setup-status`):
+Un taller recién activado no puede operar (ni siquiera navegar a Recepción/Bahía/Inventario) hasta completar 2 requisitos mínimos — `frontend/src/components/SetupGate.jsx` bloquea toda la app (salvo `/config`) mientras falte alguno, leyendo el estado de `useSetupStore` (`GET /api/workshop/setup-status`):
 
-1. **Datos del taller** configurados
-2. **Al menos 1 empleado** (`employees` con `workshop_id` del taller y `is_active=true`)
-3. **Al menos 1 servicio** en el catálogo
+1. **Datos del taller** configurados (nombre, dirección, teléfono, horario)
+2. **Al menos 1 servicio** en el catálogo
 
-- **El check de "al menos 1 empleado" es genérico, no distingue quién ni cómo se creó** (`workshop.controller.js:getSetupStatus`) — solo cuenta filas de `employees` por `workshop_id` + `is_active=true`, sin filtrar por `role` ni excluir el propio `user_id` del dueño. Confirmado 2026-07-26: si el dueño usa **"Mi Perfil de Mecánico"** (`POST /api/mechanics/self`, ver [Configuración del Taller — Mi Equipo & Roles](#configuración-del-taller-config)) en vez de dar de alta un empleado nuevo por "Alta de Talento", esa fila **sí** cuenta y desbloquea el gate igual que cualquier otro empleado — ambos flujos insertan en la misma tabla con la misma forma (`workshop_id`, `role: 'mecanico'`, `is_active: true`), y el check no tiene ninguna condición que los distinga. Sin test dedicado que fije este comportamiento explícitamente (nadie lo verificó hasta ahora, solo coincide porque el filtro es genérico) — candidato a agregar si algún día el check gana una condición de rol y rompe esto en silencio.
+- **Ya no se exige ningún empleado (2026-10-09, pedido explícito del usuario).** Antes era el requisito 2 ("al menos 1 empleado activo", con un caso especial para admins visitantes en sucursales) y el aviso amarillo no se quitaba hasta contratar a alguien. `getSetupStatus` (`workshop.controller.js`) ya no consulta `employees`, y la respuesta dejó de incluir `has_employee`: ahora es `{ workshop_complete, has_service, setup_complete }` con `setup_complete = workshop_complete && has_service`. El checklist de `SetupGate.jsx` muestra solo los 2 ítems restantes.
 
 ---
 

@@ -111,7 +111,7 @@ graph LR
 
 ## 2. Ciclo de Vida Operativo (End-to-End)
 
-> El canal `MSG` es una cascada de fallback — WhatsApp primero, Telegram si falla, Email (Resend) si ambos fallan — no un canal único (ver [OPERATIONS.md](../negocio/reception-and-quotes.md)). Desde el 09-ago-2026 el QR de "Registro Seguro EFISCO" es el camino principal en Recepción, no WhatsApp (que además está deshabilitado en producción, ver el interruptor del canal de WhatsApp abajo).
+> El canal `MSG` es una cascada de fallback — WhatsApp primero, Telegram si falla, Email (Resend) si ambos fallan — no un canal único (ver [OPERATIONS.md](../negocio/reception-and-quotes.md)). Excepción (2026-10-10): los comprobantes PDF de venta y de pago de cuota van además SIEMPRE por correo (`alwaysEmail` en `messagingChannelService.sendDocument`), no solo como último respaldo. Desde el 09-ago-2026 el QR de "Registro Seguro EFISCO" es el camino principal en Recepción, no WhatsApp (que además está deshabilitado en producción, ver el interruptor del canal de WhatsApp abajo).
 
 ```mermaid
 sequenceDiagram
