@@ -111,3 +111,6 @@ Solo cambian los textos de ayuda; reglas y fórmulas no se tocan. Contexto: [wor
 - **Categoría, unidad y proveedores 100% libres:** el desplegable conserva "Otra (especificar)" y el backend no restringe categorías ni medidas (ver "Medida del repuesto sin restricción", 2026-10-05).
 - **Fórmula intacta:** Precio sugerido = Costo / (1 - Margen%) (`getSuggestedMargin` / `calcSugerido`).
 - **Proveedores:** el nombre del proveedor y el ítem de la factura de compra usan placeholders de ciclismo en talleres de bicicletas y mixtos.
+
+### Pago de cuotas a proveedor con 4x1000 (2026-10-14)
+Al confirmar el pago de una cuota (`PagosProveedores.jsx`), si el medio es "Transferencia (Bancos)" aparece el casillero "Aplicar GMF (4x1000)" (desmarcado por defecto, se reinicia tras cada pago). El backend (`providers.controller.js:payProviderInstallment`) registra el GMF como asiento `TAX_GMF` independiente (mismo criterio que `registerPurchaseCore`: el gravamen es gasto adicional, no abarata el pago). Solo aplica con `banco`. Los otros selectores Caja/Bancos (`ModalLiquidacion`, `Inventario`, `PanelCobros`) no lo tienen.

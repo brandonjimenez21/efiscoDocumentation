@@ -232,3 +232,6 @@ Cuando un taller consulta un cliente cuyo puntaje aún no está disponible (meno
 **Validación de placa.** `backend/utils/plateFormat.js`: `validatePlateFormat` (estricta por tipo) y `validatePlateFormatLoose` (sin tipo acepta carro o moto). Carro/camioneta/pick-up `ABC123`, moto `ABC12D`, bicicleta serial de 4 a 60 caracteres `[A-Z0-9-]`. Se valida en `quotes.controller.js` (crear y editar), `quick_intakes.controller.js` (`updateIntakePlate` responde 400 si la placa está incompleta) y en Bahía. Frontend: `utils/plateFormat.js` (`formatPlate`) y `components/PlateHint.jsx` (ayuda bajo el campo en Bahía, Cotizaciones, Recepción y registro por QR). `Bahia.jsx` envía `vehicle_type` junto con la placa en `persistIntakePlate`.
 
 **Pruebas.** `tests/quotes/headerSync.test.js` y `tests/plates/plateFormat.test.js`; verificado de punta a punta en staging en los cuatro sentidos.
+
+### Cotizaciones: columnas que llenan el ancho (2026-10-14)
+Desde `xl` las 3 columnas del tablero (`KanbanColumn`) se reparten el espacio libre (`flex-1`, mínimo 250 px) en vez de 380 px fijos, para no dejar hueco hasta el panel de historial; el panel lateral pasa de 340 a 380 px en `2xl`. Bajo `xl` sigue el scroll horizontal con columnas de 380 px.

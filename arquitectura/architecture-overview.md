@@ -309,6 +309,34 @@ Detalle funcional del módulo de Inventario en [INVENTORY.md](../negocio/invento
 
 ---
 
+## 7. Sistema de diseño y animaciones (2026-10-16)
+
+Bloques 9 y 10 del plan de la auditoría del 2026-10-15. Todo vive en el frontend; no hay librería de componentes externa.
+
+**Base (`frontend/src/components/ui/`)**
+- **Tokens** en `src/index.css` (`@theme` de Tailwind 4): `brand`/`brand-fg` (en modo oscuro se invierten), `accent` (solo enlaces y foco), `success`, `warning`, `danger`; radios `control`, `card` y `modal`; curva `ease-out-expo`. Un solo acento de marca: no usar fondos saturados de color para decorar.
+- **`Button.jsx`** (+ `buttonClasses.js` para enlaces y etiquetas que deben verse como botón): variantes `primary`, `secondary`, `success`, `danger`, `ghost`; tamaños `sm`, `md`, `lg`; `loading` con spinner, `icon`, `block`; `type="button"` por defecto.
+- **`PageHeader.jsx`**: `PageHeader` (título, descripción y acciones), `PageContainer` (mismo ancho y márgenes en todas las páginas; `wide` para las que necesitan hasta 1600 px) y `SectionLabel`. Las clases que usa el tour (`equilibrio-title`, `config-title`, etc.) se pasan con `titleClassName`.
+- **`EmptyState.jsx`**, **`Skeleton.jsx`** y **`fieldClasses.js`** (campos, etiqueta corta, texto de error y tarjeta comunes).
+- **`Modal.jsx`**: `ModalBackdrop` y `ModalPanel` (framer-motion), `MODAL_OVERLAY`, `MODAL_PANEL` y `ModalHeader`.
+
+**Reglas de estilo que se aplicaron**
+- Solo las etiquetas cortas (11 px, negrita, espaciadas) van en mayúsculas; títulos y botones en tipo oración.
+- Montos con `tabular-nums`, no con letra monoespaciada. Un cero nunca va en color de alarma.
+- Sin raya em-dash en texto visible (en comentarios de código sí) y español de Colombia: tú, no voseo.
+- Los valores guardados sin tilde ("mecanico", "comision") se traducen al mostrarlos.
+
+**Animaciones y navegación (bloque 9)**
+- `MotionConfig reducedMotion="user"` en la raíz: con "reducir movimiento" solo quedan los fundidos.
+- **Cambio de ruta:** un `Suspense` por ruta (con `key`) para que aparezca el esqueleto mientras baja el chunk. El menú cambia al instante, hay una barra fina de progreso y una página ya precargada se pinta directo. El scroll vive en `<main>` (no en `window`) y vuelve a 0 al cambiar de ruta. `<main>` lleva `scrollbar-gutter: stable` para que el contenido no salte de lado.
+- **Menú lateral:** el fondo activo es un solo elemento que se desliza (`layoutId`).
+- **Modales:** el condicional va dentro de `AnimatePresence` para que el modal siga montado mientras sale y conserve sus datos. `ModalBackdrop` además: cierra con Esc solo el de más arriba (usa el propio botón de cerrar, así respeta un botón deshabilitado), atrapa y devuelve el foco, bloquea el scroll del fondo (contador, con `scrollbar-gutter`) y deja de recibir clics mientras sale. `ElegantConfirmModal` acepta `dismissible={false}` para los que no deben cerrarse por fuera (por ejemplo "¿Es solo revisión?" de Recepción, donde Cancelar registra el ingreso).
+- Las clases `animate-in`, `zoom-in-95` y similares venían de un plugin que nunca se instaló; ahora están definidas en `index.css` (`efisco-enter`).
+
+**Cómo se migra una página nueva:** envolver en `PageContainer`, usar `PageHeader`, pasar botones a `Button`, estados vacíos a `EmptyState`, y modales a `ModalBackdrop`/`ModalPanel` con `MODAL_OVERLAY`/`MODAL_PANEL` (cada modal pone su `z-50` y `p-4`; el fondo no los trae a propósito). Páginas ya migradas: Inicio, Recepción, Cotizaciones, Bahía, Inventario, Proveedores, Score B2B, Cobros, Historial, Referidos, Pagos por verificar, Flujo de Caja, Finanzas, Equilibrio, Ajustes, Seguridad, Soporte, Mi perfil y Módulo del contador. Quedan fuera las páginas públicas, el panel admin y los tours.
+
+---
+
 ## Rutas del frontend
 
 | Ruta | Módulo | Acceso |
