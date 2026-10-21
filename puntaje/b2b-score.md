@@ -106,3 +106,50 @@ Documento "Actualización de estructura y pruebas en los puntajes (B2C - B2B)". 
 - **Mora dominante**: la barra de deuda (70 pts) castiga de -60 (W = 0.60) a -70 (antes -55 a -70).
 - **Escrow de crédito**: el despacho a crédito reserva cupo antes de crearse (`services/creditEscrow.service.js`, migración `2026-10-20_cupo_reservas_escrow.sql`, `SELECT ... FOR UPDATE`); la consulta de la distribuidora resta lo reservado (`cupo_reservado_cop`). Ver `domain/b2b-distributor-portal.md`.
 - **Simulación**: `backend/simulaciones/monte_carlo_riesgo.py` (20.000 perfiles, motor real vía `puente_motor.mjs`). En la tormenta B2B los 300 nodos en default quedan bloqueados (cupo $0) pero conservan puntaje de 85 a 201 (mediana 145): la protección real es el bloqueo duro. La cola [50-75] de B2B está vacía.
+
+## Score B2B del distribuidor mayorista (2026-10-21)
+Documento "Puntaje B2B distribuidor mayorista". Subido el 2026-10-21 (backend `9f44c1a`, frontend `800af6e`). Motor puro `utils/scoringMayoristaB2B.js`; carga de datos `services/b2bDistribuidorScore.service.js`.
+
+`Score_Raw = 50 + 200 × (0,40 P1 + 0,35 P2 + 0,25 P3)`, escala 50 a 250, mismos cuatro niveles y colores que el Score B2B del taller. **Decisión del usuario:** manda la función maestra, así que cada pilar aporta hasta **80 / 70 / 50** puntos sobre la base de 50 (el documento también los llama 100 / 87,5 / 62,5, que no cuadran con la fórmula).
+
+| Pilar | Subíndice (peso dentro del pilar) | Cálculo |
+|---|---|---|
+| P1 Salud de la cartera colocada | Índice de mora en red (50%) | M = saldo vencido / saldo por cobrar; S = 1 - M / 20% |
+| | Provisión dinámica (50%) | c = 1,5 × M (3% de mora → 4,5%, el ejemplo del documento); provisión = c × saldo; S = 1 - (provisión / recaudo de 30 días) / 50% |
+| P2 Concentración y exposición sistémica | Concentración (60%) | Índice Herfindahl (HHI) del saldo por deudor: 0,10 o menos = 1, 0,60 o más = 0 |
+| | Resiliencia ante shocks (40%) | Los 3 deudores más grandes frenan pagos 30 días: sus cuotas vencidas y las que vencen en 30 días frente al recaudo mensual promedio de 90 días |
+| P3 Liquidez operativa y flujos en la red | Dinámica de caja (60%) | EWMA (alfa 2/15) del recaudo diario de 30 días contra 300.000 COP/día |
+| | Endeudamiento interno (40%) | Días de cartera = saldo / (recaudo de la cartera a crédito en 30 días / 30); 30 días o menos = 1, 120 o más = 0 |
+
+- **Cartera que cuenta** (solo lo que la red verifica): despachos a talleres confirmados (cuotas `supplier_installments`), despachos a otras distribuidoras de origen RED confirmados (`cuotas_despachos_distribuidores`) y ventas a clientes de mostrador (`distribuidor_cuotas_clientes`). Lo de contado entra a caja el día de la confirmación o de la venta. Las facturas que otra distribuidora carga **a mano** a nombre del mayorista no cuentan (no las confirmó él). No filtra datos de prueba: mide el negocio propio, como el B2B del taller.
+- Sin despachos, ventas ni cartera en 90 días: `CALIBRANDO_RADAR`. El **minorista** sale en calibración hasta su motor propio (documento "Puntaje B2B distribuidor minorista").
+- Cada barra trae su acción sugerida según el subíndice más débil; si todos están en su tope dice "Sigue así".
+- **Cifras definidas por nosotros (el documento no las da), aprobadas por el usuario el 2026-10-21:** mora tolerable 20%, consumo de provisión 50%, HHI 0,10 / 0,60, cluster de 3 deudores, meta de recaudo 300.000 COP/día y días de cartera 30 / 120. No se definió cupo sugerido ni bloqueo para distribuidoras.
+- Pruebas: `tests/b2b/b2bRedDistribuidores.test.js`.
+
+## Score B2B del distribuidor minorista (2026-10-21)
+Documento "Puntaje B2B distribuidor minorista". Motor puro `utils/scoringMinoristaB2B.js`; datos en `cargarDatosMinorista` (`services/b2bDistribuidorScore.service.js`). Sin migración (usa las tablas de los documentos anteriores).
+
+`Score_Raw = 50 + 200 × (0,40 P1 + 0,35 P2 + 0,25 P3) + bono de disciplina − castigo por exposición`, escala 50 a 250, mismos niveles que el resto del B2B. Pilares hasta 80 / 70 / 50 pts sobre la base de 50 (misma decisión de la función maestra que el mayorista).
+
+| Pilar | Subíndice (peso) | Cálculo |
+|---|---|---|
+| P1 Liquidez, rotación y cuentas por pagar | Rotación y velocidad de venta (40%) | EWMA (alfa 2/15) de las ventas diarias de 30 días (despachos a talleres y distribuidoras, ventas de mostrador) contra 150.000 COP/día |
+| | Cumplimiento con proveedores (40%) | Mitad días de mora actuales (15 o más = 0) y mitad R_t: lo pagado a tiempo (gracia de 3 días) de lo que venció en los últimos 60 días |
+| | Cobertura de pasivos (20%) | Valor del inventario / saldo por pagar; 1,5 veces o más = 1 |
+| P2 Solvencia y cartera local | Calidad del portafolio (52%) | 70% puntaje promedio de sus deudores ponderado por saldo (talleres: última foto `b2b_score_snapshots`; clientes de mostrador: EFISCO Score B2C, máximo 20 por evaluación; distribuidoras deudoras no se puntúan) y 30% la parte de la cartera no vencida. Sin crédito otorgado = 1 |
+| | Endeudamiento (48%) | Deuda activa con proveedores / capital operativo; 0,5 o menos = 1, 2 o más = 0 |
+| P3 Disciplina, perfil tributario y trazabilidad | Consistencia de registro (50%) | 70% días activos en 90 (objetivo 60: ventas, despachos, confirmaciones, pagos, inventario) y 30% despachos con factura o comprobante (adjunta, VD- automático o venta de mostrador) |
+| | Estabilidad fiscal (50%) | Perfil tributario completo: régimen, responsable de IVA, declarante y tarifa de ICA (25% cada uno) |
+
+**Decisiones del usuario (2026-10-21):**
+- **Capital operativo** = valor del inventario en EFISCO (cantidad × último valor) + recaudo de 30 días (contado y cuotas cobradas).
+- **Cupo sugerido** = factor del nivel (1,2 / 0,9 / 0,4 / 0) × 30 días de ventas (EWMA), redondeado a 10.000 COP; con bloqueo, $0.
+- **Bloqueo duro** con mora de más de 15 días con un proveedor o con la cartera colapsada (más del 50% de lo que le deben, vencido): semáforo `BLOQUEADO_POR_MORA`, cupo $0 y sin atenuación.
+- **Asimetría de flujos y respaldo de red:** si se atrasa (hasta 15 días) pero su cartera está 100% al día y con puntaje promedio de 170 o más, la penalización del cumplimiento baja a la mitad (`analisis_asimetria.caso = RESPALDO_RED`); si no, `SIN_RESPALDO`.
+- **Exposición agregada (red P2P):** si el crédito que tiene colocado supera 1,5 veces su capital operativo, resta de forma gradual hasta 20 pts (con 3 veces o más).
+
+**Decisiones nuestras (el documento no las da), aprobadas por el usuario el 2026-10-21:** meta de ventas 150.000 COP/día (la del taller), gracia de pago de 3 días, cobertura sana de 1,5, endeudamiento 0,5 / 2, **bono por disciplina** de hasta 10 pts cuando la consistencia de registro pasa de 80%. La deuda que cuenta es toda la que el minorista tiene por pagar, de la red o cargada a mano.
+
+- **Red P2P:** el minorista ve en el Directorio a otros minoristas (`VISIBILIDAD.minorista = ['minorista']`), los consulta con el mismo flujo y les despacha desde "Nuevo despacho" ("Otro minorista"), con el número automático VD- en una sola serie para talleres y distribuidoras (`siguienteNumeroDocumento`) y comprobante en PDF (`GET /distribuidor/despachos-distribuidoras/:id/documento`). Cada consulta queda en el registro inmutable y cada crédito cruzado suma a su exposición.
+- Pruebas: `tests/b2b/scoringMinoristaB2B.test.js`. Verificado en staging el 2026-10-21 en Chrome (puntaje y bloqueo del minorista, directorio de minoristas, consulta y despacho P2P con inventario) y por API (comprobante, cuentas por pagar del par y consulta del mayorista).
