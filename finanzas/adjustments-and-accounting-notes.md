@@ -252,10 +252,9 @@ Todo en producción, en el un taller de prueba y sus contadores (autorizado por 
 
 ## Pendientes
 
-**Pregunta pendiente (dejada por el usuario el 2026-09-28 para retomarla después):**
+**Decisión del CEO (2026-10-27): HABILITADO el descuento del saldo en contra sobre el sueldo, solo con autorización escrita.** Resuelve la pregunta que quedó abierta desde el 2026-09-28.
 
-> ¿El **saldo en contra de un mecánico** (comisión ya pagada que una devolución o rebaja de mano de obra reversó) debe poder descontarse **también del sueldo**, con su autorización escrita?
-
-- **Hoy**: se descuenta solo de sus **próximas comisiones** (el pendiente negativo se compensa solo con lo que gane después). Mientras esté en contra, `payMechanic` no deja pagar comisión (409); el sueldo se paga completo aparte.
-- **Por qué no se hizo automático**: en Colombia, descontar del salario exige autorización escrita del trabajador (CST art. 149). Un empleado de sueldo fijo o mixto con poca comisión futura podría quedar con el saldo en contra indefinidamente.
-- **Si la respuesta es sí**, la propuesta es una opción explícita en el modal "Registrar Pago" ("Descontar saldo en contra del sueldo", solo si hay saldo en contra y sueldo a pagar), que registre el cruce en el mismo comprobante `CE-`: el sueldo sale completo como gasto (`MECH_SALARY_PAY`), se paga en caja solo el neto, y la diferencia salda el `233525` en contra. Hace falta definir dónde queda constancia de la autorización del trabajador (por ejemplo, una casilla "Autorización escrita firmada" obligatoria para usar la opción).
+- **Autorización:** documento firmado por el trabajador (PDF/JPG/PNG, bucket privado `employee-deduction-auth`) con fecha de firma, vigencia opcional y **monto máximo acumulado** (CST art. 149). Columnas `employees.deduction_auth_*` (migración `2026-10-27_employee_deduction_authorization.sql`, la corre el usuario). Solo dueño y admin la suben, ven o retiran (`POST/GET/DELETE /api/mechanics/:id/deduction-authorization`); en Config, tarjeta "Autorización de descuento" de la ficha del empleado. Subir una nueva reinicia el tope acumulado (se cuenta desde la nueva fecha de firma).
+- **Lógica (`payMechanic`, `utils/salaryDeduction.js`):** con `deduct_debt_from_salary: true`, hay saldo en contra y autorización vigente con cupo, se descuenta `min(saldo en contra, sueldo, máximo restante)`. El sueldo sale completo como gasto (`MECH_SALARY_PAY`), en caja sale solo el neto (`CASH_PAYMENT`) y el cruce queda en `MECH_DEBT_RECOVERY` (lado CREDIT contra el `233525`, **informativo**: está en `NON_CASH_TYPES` de los dos espejos y suma al pendiente en `pendingCommissionFromRows`). Sin autorización vigente: 409 y el saldo sigue descontándose solo de comisiones y bonificaciones variables.
+- **UI:** en "Registrar pago", si hay saldo en contra, autorización y sueldo por pagar, aparece la casilla "Descontar el saldo en contra del sueldo" (desmarcada por defecto).
+- **Tests:** `backend/tests/mechanics/salaryDeduction.test.js`.

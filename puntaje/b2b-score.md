@@ -7,6 +7,8 @@ distribuidor o almacén de repuestos decida si le abre crédito comercial.
 
 ## Dónde vive
 
+Explicación pública para talleres y distribuidoras: `/red-de-confianza?puntaje=b2b` (`frontend/src/components/public/RedConfianzaB2B.jsx`, 2026-10-25). Si cambian las barras, los pesos, los niveles o las reglas de bloqueo, actualizar esa página.
+
 | Pieza | Archivo |
 |---|---|
 | Motor (función pura, `evaluarEFISCO1DT_B2B`) | `backend/utils/scoringB2B.js` |
@@ -152,4 +154,5 @@ Documento "Puntaje B2B distribuidor minorista". Motor puro `utils/scoringMinoris
 **Decisiones nuestras (el documento no las da), aprobadas por el usuario el 2026-10-21:** meta de ventas 150.000 COP/día (la del taller), gracia de pago de 3 días, cobertura sana de 1,5, endeudamiento 0,5 / 2, **bono por disciplina** de hasta 10 pts cuando la consistencia de registro pasa de 80%. La deuda que cuenta es toda la que el minorista tiene por pagar, de la red o cargada a mano.
 
 - **Red P2P:** el minorista ve en el Directorio a otros minoristas (`VISIBILIDAD.minorista = ['minorista']`), los consulta con el mismo flujo y les despacha desde "Nuevo despacho" ("Otro minorista"), con el número automático VD- en una sola serie para talleres y distribuidoras (`siguienteNumeroDocumento`) y comprobante en PDF (`GET /distribuidor/despachos-distribuidoras/:id/documento`). Cada consulta queda en el registro inmutable y cada crédito cruzado suma a su exposición.
+- **Fechas de Colombia (2026-10-26):** en los puntajes del mayorista y del minorista, "hoy", las series diarias de 30 días y los días activos se cuentan por día de Bogotá, y los vencimientos (fechas sin hora) empiezan a la medianoche de Bogotá. Antes usaban la fecha UTC: desde las 7 p. m. una cuota que vencía ese día ya contaba como vencida, la mora subía un día, la gracia de 3 días terminaba a las 7 p. m. y lo registrado de noche caía en el día siguiente. Pruebas en `tests/b2b/fechasColombiaB2B.test.js`; contexto en `core/architecture-overview.md` ("Segunda tanda, 2026-10-26").
 - Pruebas: `tests/b2b/scoringMinoristaB2B.test.js`. Verificado en staging el 2026-10-21 en Chrome (puntaje y bloqueo del minorista, directorio de minoristas, consulta y despacho P2P con inventario) y por API (comprobante, cuentas por pagar del par y consulta del mayorista).

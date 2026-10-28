@@ -67,6 +67,18 @@ Un taller nuevo se **solicita**, no se activa solo — EFISCO verifica manualmen
 
 ---
 
+## Tipo de negocio: taller, veterinaria o aseo (2026-10-25; módulos hechos en local el 2026-10-27)
+
+Con la landing de Grupo EFISCO la cuenta deja de ser siempre un taller. Decisión D6 del plan: Veterinaria y Aseo son filas de `workshop_config` con otra **vertical**, no cuentas aparte como los distribuidores, para reutilizar empleados, libro contable, impuestos, 2FA y sucursales.
+
+- **Columnas** (migración `backend/scripts/migrations/2026-10-26_business_vertical.sql`, la corre el usuario, primero en staging): `business_vertical` (`taller` | `veterinaria` | `aseo`, default `taller`), `vet_patient_type` (`pequenos` | `grandes` | `mixto`) y `vet_service_focus` (`preventiva` | `urgencias` | `integral`). Un CHECK obliga a que una veterinaria tenga los dos selectores y que las demás los tengan en NULL. Todas las cuentas existentes quedan como `taller`.
+- **Utilitario**: `backend/utils/businessVertical.js` (espejo `frontend/src/utils/businessVertical.js`): `verticalOf` (sin dato = `taller`, así funciona antes de la migración), `validateVerticalRegistration` (registro: sin vertical = taller; veterinaria exige "¿Qué pacientes atiende tu centro?" y "¿Cuál es el enfoque principal de tus servicios?", de `nuevos cambios/Especificación de Formulario de Reg.txt`) e `inheritVertical` (una sucursal copia la vertical y el perfil veterinario de su sede). Pruebas en `tests/workshop/businessVertical.test.js`.
+- **Menú**: cada ítem de `frontend/src/config/navigation.js` puede declarar `verticals`; sin el campo es solo de taller, por eso el menú de los talleres no cambia (comprobado en las 16 combinaciones de rol y permisos). Inicio, Inventario, Ajustes y Mi perfil están marcados para todas las verticales porque aparecen en el menú veterinario de 7 ítems. Sidebar y la paleta de comandos pasan `verticalOf(user)`.
+- **Cableado**: `auth.middleware.js`/`auth.controller.js`/`workshop.controller.js` leen y aceptan la vertical (registro, sucursales), `Auth.jsx` pregunta "¿Qué negocio tienes?" y `App.jsx` protege las rutas por vertical.
+- **Módulos por vertical**: Veterinaria en veterinary-vertical.md (`/mascotas`, `/api/pets`); Aseo en aseo-production.md (`/produccion` con `/api/production`, `/pedidos` con `/api/aseo`, cuentas de inventario por bodega). El motor del puntaje tiene un sector por vertical, ver [reception-and-quotes.md](./reception-and-quotes.md).
+
+---
+
 ## Gate de Configuración Inicial (SetupGate)
 
 Un taller recién activado no puede operar (ni siquiera navegar a Recepción/Bahía/Inventario) hasta completar 2 requisitos mínimos — `frontend/src/components/SetupGate.jsx` bloquea toda la app (salvo `/config`) mientras falte alguno, leyendo el estado de `useSetupStore` (`GET /api/workshop/setup-status`):
