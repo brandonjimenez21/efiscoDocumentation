@@ -156,3 +156,25 @@ Documento "Puntaje B2B distribuidor minorista". Motor puro `utils/scoringMinoris
 - **Red P2P:** el minorista ve en el Directorio a otros minoristas (`VISIBILIDAD.minorista = ['minorista']`), los consulta con el mismo flujo y les despacha desde "Nuevo despacho" ("Otro minorista"), con el número automático VD- en una sola serie para talleres y distribuidoras (`siguienteNumeroDocumento`) y comprobante en PDF (`GET /distribuidor/despachos-distribuidoras/:id/documento`). Cada consulta queda en el registro inmutable y cada crédito cruzado suma a su exposición.
 - **Fechas de Colombia (2026-10-26):** en los puntajes del mayorista y del minorista, "hoy", las series diarias de 30 días y los días activos se cuentan por día de Bogotá, y los vencimientos (fechas sin hora) empiezan a la medianoche de Bogotá. Antes usaban la fecha UTC: desde las 7 p. m. una cuota que vencía ese día ya contaba como vencida, la mora subía un día, la gracia de 3 días terminaba a las 7 p. m. y lo registrado de noche caía en el día siguiente. Pruebas en `tests/b2b/fechasColombiaB2B.test.js`; contexto en `core/architecture-overview.md` ("Segunda tanda, 2026-10-26").
 - Pruebas: `tests/b2b/scoringMinoristaB2B.test.js`. Verificado en staging el 2026-10-21 en Chrome (puntaje y bloqueo del minorista, directorio de minoristas, consulta y despacho P2P con inventario) y por API (comprobante, cuentas por pagar del par y consulta del mayorista).
+
+## Score B2B Planta de aseo -> Tendero (2026-10-29, solo motor)
+Documento "ESPECIFICACIÓN TÉCNICA Y MATEMÁTICA PUNTAJE EFISCO B2B SECTOR PLANTA DE ASEO TENDERO". Motor puro `utils/scoringTenderoB2B.js` (`evaluarTenderoB2B`), pruebas en `tests/b2b/scoringTenderoB2B.test.js`. **Conectado el 2026-10-30** (documento #6): `services/tenderoB2BScore.service.js` carga los datos del par planta-tienda, hay endpoints `/api/planta/puntaje` y `/api/planta/tiendas/:id/puntaje`, el panel `PuntajePlanta.jsx` y el aviso de cupo al despachar. Detalle del cableado, `I_ver` (decisión del CEO) y el gate del contrato 1.2.0 en [tenderos-planta.md](tenderos-planta.md). El CEO aprobó las propuestas (tolerancia 30 días, ciclo 15, referencia 80.000, aviso sin bloqueo) el 2026-10-30.
+
+`Score = 50 + 200 x (0,45 P1 + 0,30 P2 + 0,25 P3)`, escala 50 a 250, mismos niveles y colores del B2B.
+
+| Pilar | Índice (peso) | Cálculo |
+|---|---|---|
+| P1 Pago comercial | `I_pun` (50%) | promedio de `max(0, 1 - retraso / 30)` sobre las facturas exigibles |
+| | `I_liq` (30%) | facturas pagadas a tiempo / exigibles |
+| | `I_car` (20%) | 0 si alguna factura lleva más de 60 días vencida sin pagar |
+| P2 Estabilidad | `I_rot` (40%) | `min(1, vendido / entregado a crédito)`, ambos en los últimos 30 días (tienda: ventas de productos de la planta sobre unidades despachadas; 2026-10-30) |
+| | `I_acel` (30%) | `1 - abs(último pedido - promedio anterior) / promedio anterior` |
+| | `I_ver` (30%) | verificaciones exitosas / requeridas |
+| P3 Fidelidad | `I_tkt` (70%) | `min(1, ticket promedio / referencia de la red)`, respaldo 80.000 |
+| | `I_ciclo` (30%) | `1 - abs(días de reabastecimiento - ciclo óptimo) / ciclo óptimo` |
+
+**Cupo** = pedido promedio histórico (todos los pedidos ya despachados; corregido en la auditoría del 2026-10-30, antes excluía el último y con un solo pedido daba 0) x (Score / 100) x `Factor_Plazo` (8 d = 0,5; 15 d = 1,0; 30 d = 1,5 con Score mayor a 180, si no 0,8 (ajuste del CEO 2026-10-29, antes 1,0); otro plazo = 0,5), redondeado a 10.000 COP; cupo 0 con mora crítica o nivel MUY_MALO.
+
+**Decisiones mías donde el documento no define (PROPUESTA, validar con el CEO):** tolerancia de 30 días en `I_pun`; sin datos cada índice vale el neutro 0,5 con marca "sin historial" (`I_pun` sin facturas exigibles vale 1); sin facturas ni pedidos el puntaje queda en 50 y el estado es `CALIBRANDO_RADAR`; los "días del último reabastecimiento" son el mayor entre el intervalo de los dos últimos pedidos y los días desde el último (así quien dejó de pedir también baja); ciclo óptimo por defecto 15 días; cupo 0 con MUY_MALO y con mora crítica.
+
+**Corrección 2026-10-30 (P6-5):** sin pedidos, `I_tkt` e `I_ciclo` valían 0 aunque esta misma regla promete el neutro 0,5. Ahora valen 0,5 y salen en `sin_historial` (`ticket` y `ciclo`), igual que el resto de índices. Efecto: una tienda con facturas pero sin pedidos registrados aporta 25 puntos en P3 en vez de 0; el cupo sigue en 0 porque sale del pedido promedio histórico, que sin pedidos vale 0. Con pedidos nada cambia. Pruebas en `tests/b2b/scoringTenderoB2B.test.js`.

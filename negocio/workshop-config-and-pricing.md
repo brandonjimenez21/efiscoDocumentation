@@ -84,7 +84,9 @@ Con la landing de Grupo EFISCO la cuenta deja de ser siempre un taller. Decisió
 Un taller recién activado no puede operar (ni siquiera navegar a Recepción/Bahía/Inventario) hasta completar 2 requisitos mínimos — `frontend/src/components/SetupGate.jsx` bloquea toda la app (salvo `/config`) mientras falte alguno, leyendo el estado de `useSetupStore` (`GET /api/workshop/setup-status`):
 
 1. **Datos del taller** configurados (nombre, dirección, teléfono, horario)
-2. **Al menos 1 servicio** en el catálogo
+2. **Al menos 1 servicio** en el catálogo (solo taller y veterinaria)
+
+- **Actualización 2026-10-30:** aseo (catálogo de productos), alimentos y tendero no tienen catálogo de servicios; exigírselo dejaba atascada en Ajustes a toda cuenta nueva de esas verticales. `getSetupStatus` devuelve `requires_service` (true solo en taller y veterinaria) y `setup_complete = workshop_complete && (has_service || !requires_service)`; el checklist oculta el ítem cuando no aplica y dice "negocio" en vez de "taller" fuera de talleres.
 
 - **Ya no se exige ningún empleado (2026-10-09, pedido explícito del usuario).** Antes era el requisito 2 ("al menos 1 empleado activo", con un caso especial para admins visitantes en sucursales) y el aviso amarillo no se quitaba hasta contratar a alguien. `getSetupStatus` (`workshop.controller.js`) ya no consulta `employees`, y la respuesta dejó de incluir `has_employee`: ahora es `{ workshop_complete, has_service, setup_complete }` con `setup_complete = workshop_complete && has_service`. El checklist de `SetupGate.jsx` muestra solo los 2 ítems restantes.
 

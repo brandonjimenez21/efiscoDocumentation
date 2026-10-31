@@ -33,6 +33,17 @@ Sin plan mensual fijo ni tarjeta de crédito para empezar — el taller solo pag
 | Repuesto de Venta Directa (mostrador) | $150 COP/unidad | Solo si el repuesto NO va dentro de una orden (ya cubierta por la tarifa de orden) |
 | Consulta de puntaje crediticio | $100 COP | Solo si el cliente tiene ≥30 días de historial (`verifyScoreOTP`) |
 
+### Tarifas de los demás sectores (2026-10-30, definidas por el CEO)
+
+| Sector | Por venta realizada | Desde | Consulta del Puntaje |
+|:---|:---:|:---|:---:|
+| Veterinaria | $535 COP | baja a $416 COP desde la venta 120 del mes | $100 COP |
+| Aseo | $535 COP | baja a $416 COP desde la venta 120 del mes | $100 COP |
+| Alimentos | $150 COP | baja a $90 COP desde la venta 560 del mes | $100 COP |
+| Tiendas (tenderos) | $150 COP | baja a $90 COP desde la venta 560 del mes | $100 COP |
+
+Todos empiezan con el **mes gratis de bienvenida** (30 días desde que el admin activa la cuenta, `FREE_MONTH_DAYS`), igual que los talleres. **Estado:** publicadas en `/veterinaria/tarifas`, `/aseo/tarifas`, `/alimentos/tarifas` y `/tendero/tarifas` (`SectorTarifas.jsx`, constante `SALE_FEES`); el aviso "Mes gratis de bienvenida" del Inicio ya sale en los cuatro sectores (`FreeMonthBanner.jsx`, compartido con el Inicio de talleres) y el correo de fin del mes gratis dice "venta realizada" fuera de talleres (`notifyFreeMonthEnded`). La consulta del puntaje ($100) ya se cobra en todos los sectores. **El cobro por venta de estos cuatro sectores TODAVÍA NO existe en el backend** (hoy solo se cobra la orden liquidada de talleres y la venta directa de $150 por unidad, que aseo usa): falta decidir qué cuenta como venta (pedido de aseo, despacho de la planta al tendero, venta de veterinaria), si reemplaza la venta directa en aseo, el IVA y si el escalón es por grupo o por sede. `recordSubscriptionInvoice` (`admin.controller.js`) tampoco revisa el mes gratis al registrar un cobro a mano.
+
 Es un modelo deliberadamente sin fricción de entrada: el costo variable escala con el uso real del taller (más órdenes = más ingreso para EFISCO, no un plan que penaliza a un taller pequeño ni deja dinero sobre la mesa con uno grande). Detalle técnico completo (cómo se acumulan y se facturan estos tres cargos) en [BILLING.md — Dashboard](./growth-and-subscription-billing.md#dashboard) y [BILLING.md — Venta Directa](./growth-and-subscription-billing.md#venta-directa--tarifa-por-repuesto-2026-08-05).
 
 ---
